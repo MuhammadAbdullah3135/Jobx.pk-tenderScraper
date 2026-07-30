@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jobz.pk Tender Batch Downloader</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Jobz.pk Tender Batch Downloader</h1>
+
+    <div id="status-text" class="status" aria-live="polite">Checking current page...</div>
+
+    <div class="info-row">
+      <span class="info-label">Current page:</span>
+      <span id="current-page-status">Not checked in Phase 1</span>
+    </div>
+
+    <div class="info-row">
+      <span class="info-label">Pagination number:</span>
+      <span id="pagination-info">Not available</span>
+    </div>
+
+    <div class="info-row">
+      <span class="info-label">Tender count:</span>
+      <span id="tender-count">Not available</span>
+    </div>
+
+    <button id="download-btn" disabled>Download Current Page Tenders</button>
+
+    <div id="progress-area" style="display:none;">
+      <div id="current-tender" style="font-size:13px;margin-bottom:4px;">Current Tender: <span id="current-tender-name">-</span></div>
+    </div>
+
+    <div class="progress-row">
+      <label for="progress-bar">Progress:</label>
+      <progress id="progress-bar" value="0" max="100" aria-label="Download progress"></progress>
+    </div>
+
+    <div class="counters">
+      <div class="counter">Processed: <span id="processed-count">0</span></div>
+      <div class="counter">Successful: <span id="success-count">0</span></div>
+      <div class="counter">Skipped: <span id="skipped-count">0</span></div>
+      <div class="counter">Failed: <span id="failed-count">0</span></div>
+      <div class="counter">Remaining: <span id="remaining-count">0</span></div>
+    </div>
+
+    <div id="completion-summary" style="display:none;margin-top:12px;padding:10px;border:2px solid #4caf50;border-radius:6px;font-size:13px;line-height:1.6;">
+      <strong>Batch Complete</strong><br>
+      <span id="summary-completed-at"></span><br>
+      <span id="summary-duration"></span><br>
+      Total: <span id="summary-total">0</span> |
+      Success: <span id="summary-success">0</span> |
+      Failed: <span id="summary-failed">0</span> |
+      Skipped: <span id="summary-skipped">0</span>
+    </div>
+
+    <div id="message-area" aria-live="polite"></div>
+  </div>
+
+  <script src="../shared/constants.js"></script>
+  <script src="../shared/batch-state.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

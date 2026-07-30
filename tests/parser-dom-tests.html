@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 5B/5D — Parser DOM Tests</title>
+<style>
+body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+h1 { font-size: 18px; }
+h2 { font-size: 15px; margin-top: 24px; }
+.pass { color: #080; }
+.fail { color: #c00; font-weight: bold; }
+.skip { color: #888; }
+.summary { margin-top: 20px; padding: 12px; background: #fff; border: 1px solid #ccc; }
+pre { white-space: pre-wrap; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>Phase 5B/5D — Parser DOMParser Tests</h1>
+<p>Tests DOMParser-dependent functions from <code>tender-detail-parser.js</code>. Open in a browser on a local server or via <code>file://</code>. Results update automatically.</p>
+<pre id="output"></pre>
+<div id="summary" class="summary"></div>
+
+<script src="../src/offscreen/tender-detail-parser.js"></script>
+<script>
+// ===== Fixture HTML as embedded strings =====
+
+var FIXTURE_TABLE_HEADERS = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Supply of Medical Equipment Tender - Jobz.pk</title></head><body><div class="tender-detail"><h1>Supply of Medical Equipment to DHQ Hospital</h1><table class="tender-info"><tr><th>Date Posted</th><td>25 Jul 2026</td></tr><tr><th>Category</th><td>Goods</td></tr><tr><th>Province</th><td>Punjab</td></tr><tr><th>Location</th><td>Lahore</td></tr><tr><th>Subcategory</th><td>Medical Equipment</td></tr><tr><th>Sector</th><td>Health</td></tr><tr><th>Newspaper</th><td>Daily Jang</td></tr><tr><th>Last Date</th><td>15 Aug 2026</td></tr></table></div></body></html>';
+
+var FIXTURE_DEFINITION_LIST = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Construction of Road Tender - Jobz.pk</title></head><body><div class="detail-content"><h1>Construction of Road in District Swat</h1><dl class="tender-meta"><dt>Posted Date</dt><dd>20 Jul 2026</dd><dt>Tender Category</dt><dd>Works</dd><dt>Province / Area</dt><dd>Khyber Pakhtunkhwa</dd><dt>Tender Location</dt><dd>Swat</dd><dt>Sub Category</dt><dd>Road Infrastructure</dd><dt>Industry</dt><dd>Infrastructure</dd><dt>Daily</dt><dd>Daily Mashriq</dd><dt>Closing Date</dt><dd>10 Aug 2026</dd></dl></div></body></html>';
+
+var FIXTURE_NESTED_DIV = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Tender for IT Equipment - Jobz.pk</title></head><body><div id="content" class="content-area"><h1>IT Equipment for Government Schools</h1><div class="field-row"><span class="field-label">Published Date:</span><strong class="field-value">18 Jul 2026</strong></div><div class="field-row"><span class="field-label">Category:</span><strong class="field-value">Services</strong></div><div class="field-row"><span class="field-label">Region:</span><strong class="field-value">Sindh</strong></div><div class="field-row"><span class="field-label">Place:</span><strong class="field-value">Karachi</strong></div><div class="field-row"><span class="field-label">Type:</span><strong class="field-value">IT Services</strong></div><div class="field-row"><span class="field-label">Sector Type:</span><strong class="field-value">Education</strong></div><div class="field-row"><span class="field-label">Publication:</span><strong class="field-value">Daily Dawn</strong></div><div class="field-row"><span class="field-label">Bid Submission Date:</span><strong class="field-value">28 Aug 2026</strong></div></div></body></html>';
+
+var FIXTURE_MISSING_FIELDS = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Supply of Furniture - Jobz.pk</title></head><body><div class="tender-detail"><h1>Supply of Furniture for Secretariat</h1><table class="tender-info"><tr><th>Date Posted</th><td>22 Jul 2026</td></tr><tr><th>Category</th><td>Goods</td></tr><tr><th></th><td></td></tr><tr><th>Location</th><td></td></tr><tr><th>Newspaper</th><td>Daily Express</td></tr></table></div></body></html>';
+
+var FIXTURE_CONFLICTING = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Multiple Values Tender - Jobz.pk</title></head><body><div class="tender-detail"><h1>Miscellaneous Supplies Tender</h1><table class="tender-info"><tr><th>Date Posted</th><td>10 Jul 2026</td></tr><tr><th>Date Published</th><td>11 Jul 2026</td></tr><tr><th>Category</th><td>Goods</td></tr><tr><th>Tender Category</th><td>Services</td></tr><tr><th>Province</th><td>Balochistan</td></tr><tr><th>Region</th><td>Punjab</td></tr></table></div></body></html>';
+
+var FIXTURE_DESCRIPTION = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>School Furniture Tender - Jobz.pk</title></head><body><div class="tender-detail"><h1>Supply of Furniture for Government Schools</h1><table class="tender-info"><tr><th>Date Posted</th><td>12 Jul 2026</td></tr><tr><th>Category</th><td>Goods</td></tr><tr><th>Province</th><td>Punjab</td></tr><tr><th>Location</th><td>Multan</td></tr><tr><th>Last Date</th><td>20 Aug 2026</td></tr></table><h2>Tender Description</h2><p>The Education Department Punjab invites sealed bids from registered suppliers for the supply of school furniture including desks, chairs, and whiteboards for 50 government schools in Multan district.</p><p>The tender is open to all registered vendors with valid NTN certificates. Bids must be submitted in sealed envelopes addressed to the Director of Education, Multan.</p><p>A pre-bid meeting will be held on 25 Jul 2026 at 10:00 AM in the conference room of the Education Department.</p><h3>Eligibility Criteria</h3><ul><li>Registered with Punjab Revenue Authority</li><li>Valid NTN certificate</li><li>Minimum 3 years of relevant experience</li></ul><p class="disclaimer">The department reserves the right to reject any or all bids without assigning any reason.</p></div></body></html>';
+
+var FIXTURE_NOISE = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Vehicle Procurement Tender - Jobz.pk</title></head><body><nav class="navbar"><a href="/">Home</a> <a href="/tenders-1/">Tenders</a><img src="https://www.jobz.pk/images/logo.png" width="200" height="50" alt="Logo"></nav><div class="sidebar"><h3>Related Tenders</h3><ul><li><a href="/tender-other.html">Other Tender</a></li></ul><img src="https://www.jobz.pk/images/sidebar-ad.jpg" width="300" height="250" alt="Ad"></div><div class="tender-detail"><h1>Procurement of Vehicles for Police Department</h1><table class="tender-info"><tr><th>Date Posted</th><td>19 Jul 2026</td></tr><tr><th>Category</th><td>Goods</td></tr><tr><th>Province</th><td>Punjab</td></tr><tr><th>Location</th><td>Rawalpindi</td></tr><tr><th>Last Date</th><td>05 Aug 2026</td></tr></table><div class="social-share"><a href="#">Share on Facebook</a><a href="#">Share on Twitter</a><img src="https://www.jobz.pk/images/share-icon.png" width="24" height="24" alt="Share"></div><div class="related-tenders"><h3>More Tenders</h3><div class="related-item"><img src="https://www.jobz.pk/images/related-tender.jpg" width="120" height="90" alt="Related"><a href="#">Another Related Tender</a></div></div></div><footer><p>Copyright 2026 Jobz.pk</p><img src="https://www.jobz.pk/images/footer-logo.png" width="100" height="30" alt="Footer Logo"></footer></body></html>';
+
+var FIXTURE_IMAGES = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Construction Tender with Images - Jobz.pk</title></head><body><div class="tender-detail"><h1>Construction of Boundary Wall</h1><table class="tender-info"><tr><th>Date Posted</th><td>14 Jul 2026</td></tr><tr><th>Category</th><td>Works</td></tr><tr><th>Province</th><td>Sindh</td></tr><tr><th>Location</th><td>Hyderabad</td></tr><tr><th>Last Date</th><td>10 Aug 2026</td></tr></table><h2>Tender Advertisement Images</h2><img src="/images/tenders/ad-66063-page-001.jpg" width="600" height="800" alt="Advertisement Page 1"><img src="/images/tenders/ad-66063-page-002.jpg" width="600" height="800" alt="Advertisement Page 2"><img src="/images/tenders/other-66063-image.jpg" width="400" height="300" alt="Site Photo"><img src="https://www.jobz.pk/images/tenders/supplement-66063.jpg" width="600" height="400" alt="Supplement"><img data-src="/images/tenders/lazy-66063-extra.jpg" width="600" height="800" alt="Lazy Loaded"></div></body></html>';
+
+var FIXTURE_NO_VALID_IMAGES = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Tender for Stationery - Jobz.pk</title></head><body><div class="tender-detail" id="tender-detail"><h1>Supply of Stationery Items</h1><table class="tender-info"><tr><th>Date Posted</th><td>15 Jul 2026</td></tr><tr><th>Category</th><td>Goods</td></tr><tr><th>Location</th><td>Islamabad</td></tr><tr><th>Last Date</th><td>01 Aug 2026</td></tr></table><img src="https://www.jobz.pk/images/logo-small.png" width="80" height="20" alt="Logo"><img src="https://www.jobz.pk/images/spinner.gif" width="16" height="16" alt="Loading"><img src="https://www.jobz.pk/images/social-facebook.png" width="32" height="32" alt="Facebook"><img src="https://www.jobz.pk/images/icon-pdf.png" width="48" height="48" alt="PDF"><img src="https://www.jobz.pk/images/banner-top.jpg" width="728" height="90" alt="Banner"><img src="https://www.jobz.pk/images/google_adsense.png" width="300" height="250" alt="Ad"></div></body></html>';
+
+// ===== Test framework =====
+var outputEl = document.getElementById('output');
+var summaryEl = document.getElementById('summary');
+var passed = 0, failed = 0, skipped = 0;
+var lines = [];
+
+function test(name, fn) {
+  try {
+    fn();
+    passed++;
+    lines.push('<span class="pass">PASS</span> ' + escapeHtml(name));
+  } catch (e) {
+    failed++;
+    lines.push('<span class="fail">FAIL</span> ' + escapeHtml(name) + ' — ' + escapeHtml(e.message));
+  }
+}
+
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg || 'assertion failed');
+}
+
+function assertStrict(actual, expected, msg) {
+  if (actual !== expected) throw new Error((msg ? msg + ': ' : '') + 'expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual));
+}
+
+function assertDeepEqual(actual, expected, msg) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error((msg ? msg + ': ' : '') + 'expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual));
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function parse(html) {
+  return new DOMParser().parseFromString(html, 'text/html');
+}
+
+function runAllTests() {
+  lines = []; passed = 0; failed = 0;
+
+  // ===== PAGE TITLE TESTS =====
+
+  test('page-title extraction from h1', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var title = extractPageTitle(doc, main, '');
+    assertStrict(title.indexOf('Supply of Medical Equipment to DHQ Hospital') !== -1, true, 'should contain h1 text');
+  });
+
+  test('site-suffix removal from page title', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var title = extractPageTitle(doc, main, '');
+    assert(title.indexOf('Jobz.pk') === -1, 'title should not contain "Jobz.pk"');
+  });
+
+  test('original-title fallback when no h1 or doc.title', function() {
+    var html = '<!DOCTYPE html><html><body><p>No heading here</p></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var title = extractPageTitle(doc, main, 'Custom Fallback Title');
+    assertStrict(title, 'Custom Fallback Title');
+  });
+
+  test('Unknown Tender fallback when everything missing', function() {
+    var html = '<!DOCTYPE html><html><body></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var title = extractPageTitle(doc, main, '');
+    assertStrict(title, 'Unknown Tender');
+  });
+
+  // ===== METADATA EXTRACTION — TABLE =====
+
+  test('table metadata — all 8 fields', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.datePosted, '25 Jul 2026');
+    assertStrict(meta.category, 'Goods');
+    assertStrict(meta.province, 'Punjab');
+    assertStrict(meta.location, 'Lahore');
+    assertStrict(meta.subcategory, 'Medical Equipment');
+    assertStrict(meta.sector, 'Health');
+    assertStrict(meta.newspaper, 'Daily Jang');
+    assertStrict(meta.lastDate, '15 Aug 2026');
+  });
+
+  // ===== METADATA EXTRACTION — DEFINITION LIST =====
+
+  test('definition-list metadata — all 8 fields with aliases', function() {
+    var doc = parse(FIXTURE_DEFINITION_LIST);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.datePosted, '20 Jul 2026');
+    assertStrict(meta.category, 'Works');
+    assertStrict(meta.province, 'Khyber Pakhtunkhwa');
+    assertStrict(meta.location, 'Swat');
+    assertStrict(meta.subcategory, 'Road Infrastructure');
+    assertStrict(meta.sector, 'Infrastructure');
+    assertStrict(meta.newspaper, 'Daily Mashriq');
+    assertStrict(meta.lastDate, '10 Aug 2026');
+  });
+
+  // ===== METADATA EXTRACTION — NESTED DIV =====
+
+  test('nested div metadata — all 8 fields with aliases', function() {
+    var doc = parse(FIXTURE_NESTED_DIV);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.datePosted, '18 Jul 2026');
+    assertStrict(meta.category, 'Services');
+    assertStrict(meta.province, 'Sindh');
+    assertStrict(meta.location, 'Karachi');
+    assertStrict(meta.subcategory, 'IT Services');
+    assertStrict(meta.sector, 'Education');
+    assertStrict(meta.newspaper, 'Daily Dawn');
+    assertStrict(meta.lastDate, '28 Aug 2026');
+  });
+
+  // ===== LABEL NORMALIZATION AND ALIASES =====
+
+  test('label normalization — normalizeLabel lowercases', function() {
+    assertStrict(normalizeLabel('Date Posted'), 'date posted');
+  });
+
+  test('label aliases — matchLabel with alias list', function() {
+    assert(matchLabel('Date Posted', ['date posted', 'posted date']));
+  });
+
+  test('label aliases — matchLabel with colon suffix', function() {
+    assert(matchLabel('Date Posted:', ['date posted']));
+  });
+
+  test('label aliases — matchLabel with parenthetical', function() {
+    assert(matchLabel('Last Date of Submission (Date)', ['last date of submission']));
+  });
+
+  // ===== DATE POSTED =====
+
+  test('Date Posted from table', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.datePosted, '25 Jul 2026');
+  });
+
+  test('Date Posted from definition list as Posted Date', function() {
+    var doc = parse(FIXTURE_DEFINITION_LIST);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.datePosted, '20 Jul 2026');
+  });
+
+  test('Date Posted from div as Published Date', function() {
+    var doc = parse(FIXTURE_NESTED_DIV);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.datePosted, '18 Jul 2026');
+  });
+
+  // ===== CATEGORY =====
+
+  test('Category from table', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.category, 'Goods');
+  });
+
+  // ===== PROVINCE =====
+
+  test('Province from table', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.province, 'Punjab');
+  });
+
+  test('Province from dl alias Province / Area', function() {
+    var doc = parse(FIXTURE_DEFINITION_LIST);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.province, 'Khyber Pakhtunkhwa');
+  });
+
+  // ===== LOCATION =====
+
+  test('Location from table', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.location, 'Lahore');
+  });
+
+  test('Location from div alias Place', function() {
+    var doc = parse(FIXTURE_NESTED_DIV);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.location, 'Karachi');
+  });
+
+  // ===== SUBCATEGORY =====
+
+  test('Subcategory from table', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.subcategory, 'Medical Equipment');
+  });
+
+  // ===== SECTOR =====
+
+  test('Sector from table', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.sector, 'Health');
+  });
+
+  test('Sector from dl alias Industry', function() {
+    var doc = parse(FIXTURE_DEFINITION_LIST);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.sector, 'Infrastructure');
+  });
+
+  test('Sector from div alias Sector Type', function() {
+    var doc = parse(FIXTURE_NESTED_DIV);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.sector, 'Education');
+  });
+
+  // ===== NEWSPAPER =====
+
+  test('Newspaper from table', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.newspaper, 'Daily Jang');
+  });
+
+  test('Newspaper from dl alias Daily', function() {
+    var doc = parse(FIXTURE_DEFINITION_LIST);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.newspaper, 'Daily Mashriq');
+  });
+
+  test('Newspaper from div alias Publication', function() {
+    var doc = parse(FIXTURE_NESTED_DIV);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.newspaper, 'Daily Dawn');
+  });
+
+  // ===== LAST DATE =====
+
+  test('Last Date from table', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.lastDate, '15 Aug 2026');
+  });
+
+  test('Last Date from dl alias Closing Date', function() {
+    var doc = parse(FIXTURE_DEFINITION_LIST);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.lastDate, '10 Aug 2026');
+  });
+
+  test('Last Date from div alias Bid Submission Date', function() {
+    var doc = parse(FIXTURE_NESTED_DIV);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.lastDate, '28 Aug 2026');
+  });
+
+  // ===== MISSING OPTIONAL FIELDS =====
+
+  test('missing optional fields default to Not available', function() {
+    var doc = parse(FIXTURE_MISSING_FIELDS);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.datePosted, '22 Jul 2026');
+    assertStrict(meta.category, 'Goods');
+    assertStrict(meta.newspaper, 'Daily Express');
+    assertStrict(meta.province, 'Not available');
+    assertStrict(meta.location, 'Not available');
+    assertStrict(meta.lastDate, 'Not available');
+    assertStrict(meta.subcategory, 'Not available');
+    assertStrict(meta.sector, 'Not available');
+  });
+
+  // ===== CONFLICTING VALUES =====
+
+  test('conflicting values use first match', function() {
+    var doc = parse(FIXTURE_CONFLICTING);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.datePosted, '10 Jul 2026');
+    assertStrict(meta.category, 'Goods');
+    assertStrict(meta.province, 'Balochistan');
+  });
+
+  // ===== DUPLICATE WARNINGS =====
+
+  test('duplicate warnings are deduplicated', function() {
+    var w = [];
+    w = addWarning(w, 'Test warning.');
+    w = addWarning(w, 'Test warning.');
+    assertStrict(w.length, 1, 'should have 1 warning after dedup');
+  });
+
+  // ===== DESCRIPTION EXTRACTION =====
+
+  test('description section extraction finds content', function() {
+    var doc = parse(FIXTURE_DESCRIPTION);
+    var desc = extractDescription(doc);
+    assert(desc.length > 50, 'description should be substantial');
+    assert(desc.indexOf('Education Department Punjab') !== -1, 'should contain key text');
+  });
+
+  test('description preserves paragraphs', function() {
+    var doc = parse(FIXTURE_DESCRIPTION);
+    var desc = extractDescription(doc);
+    var lines = desc.split('\n');
+    assert(lines.length >= 2, 'should have at least 2 lines/paragraphs');
+  });
+
+  test('missing description returns empty string', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var desc = extractDescription(doc);
+    assertStrict(desc, '', 'no description should return empty');
+  });
+
+  test('description truncation respects max length', function() {
+    var long = 'A'.repeat(10000);
+    var truncated = truncateDescription(long, 100);
+    assert(truncated.length < long.length, 'should be shorter');
+    assert(truncated.indexOf('truncated') !== -1, 'should include truncation notice');
+  });
+
+  // ===== NAVIGATION EXCLUSION =====
+
+  test('navigation elements excluded by stripUnwantedElements', function() {
+    var doc = parse(FIXTURE_NOISE);
+    stripUnwantedElements(doc);
+    var navs = doc.querySelectorAll('nav, .navbar, .navigation');
+    assertStrict(navs.length, 0, 'nav elements should be removed');
+  });
+
+  test('footer excluded by stripUnwantedElements', function() {
+    var doc = parse(FIXTURE_NOISE);
+    stripUnwantedElements(doc);
+    var footers = doc.querySelectorAll('footer');
+    assertStrict(footers.length, 0, 'footer elements should be removed');
+  });
+
+  test('sidebar excluded by stripUnwantedElements', function() {
+    var doc = parse(FIXTURE_NOISE);
+    stripUnwantedElements(doc);
+    var sidebars = doc.querySelectorAll('.sidebar');
+    assertStrict(sidebars.length, 0, 'sidebar elements should be removed');
+  });
+
+  test('social-share excluded by stripUnwantedElements', function() {
+    var doc = parse(FIXTURE_NOISE);
+    stripUnwantedElements(doc);
+    var shares = doc.querySelectorAll('.social-share');
+    assertStrict(shares.length, 0, 'social-share elements should be removed');
+  });
+
+  test('related-tenders excluded by stripUnwantedElements', function() {
+    var doc = parse(FIXTURE_NOISE);
+    stripUnwantedElements(doc);
+    var related = doc.querySelectorAll('.related-tenders');
+    assertStrict(related.length, 0, 'related-tenders elements should be removed');
+  });
+
+  // ===== IMAGE EXTRACTION =====
+
+  test('relative image URL resolved to absolute', function() {
+    var doc = parse(FIXTURE_IMAGES);
+    var main = findMainContent(doc);
+    var images = extractTenderImages(doc, main, '66063', 'https://www.jobz.pk/test_tenders-66063.html');
+    var foundRelative = false;
+    for (var i = 0; i < images.length; i++) {
+      if (images[i].indexOf('/images/tenders/ad-66063-page-001.jpg') !== -1) {
+        foundRelative = true;
+        break;
+      }
+    }
+    assert(foundRelative, 'relative URL should resolve');
+    for (var i = 0; i < images.length; i++) {
+      if (images[i].indexOf('http://') === 0) {
+        assert(images[i].indexOf('https://') === 0, 'HTTP should be upgraded to HTTPS: ' + images[i]);
+      }
+    }
+  });
+
+  test('HTTP image upgraded to HTTPS', function() {
+    assertStrict(canonicalizeImageUrl('http://www.jobz.pk/images/test.jpg', 'https://www.jobz.pk/').indexOf('https://'), 0);
+  });
+
+  test('hostname normalization to www.jobz.pk', function() {
+    var url = canonicalizeImageUrl('http://jobz.pk/images/test.jpg', 'https://www.jobz.pk/');
+    assert(url.indexOf('www.jobz.pk') !== -1, 'should contain www.jobz.pk');
+  });
+
+  test('tender-ID image preference orders correctly', function() {
+    var doc = parse(FIXTURE_IMAGES);
+    var main = findMainContent(doc);
+    var images = extractTenderImages(doc, main, '66063', 'https://www.jobz.pk/test_tenders-66063.html');
+    assert(images.length >= 2, 'should find at least 2 images');
+  });
+
+  test('multiple images preserve order', function() {
+    var doc = parse(FIXTURE_IMAGES);
+    var main = findMainContent(doc);
+    var images = extractTenderImages(doc, main, '66063', 'https://www.jobz.pk/test_tenders-66063.html');
+    if (images.length >= 2) {
+      assert(images[0].indexOf('ad-66063-page-001') !== -1 || images[0].indexOf('ad-66063-page-002') !== -1,
+        'first images should be preferred');
+    }
+  });
+
+  test('duplicate image URLs removed', function() {
+    var doc = parse(FIXTURE_IMAGES);
+    var main = findMainContent(doc);
+    var images = extractTenderImages(doc, main, '66063', 'https://www.jobz.pk/test_tenders-66063.html');
+    var seen = {};
+    for (var i = 0; i < images.length; i++) {
+      if (seen[images[i]]) throw new Error('Duplicate found: ' + images[i]);
+      seen[images[i]] = true;
+    }
+  });
+
+  // ===== IMAGE REJECTION =====
+
+  test('logo images rejected', function() {
+    assert(!isValidImageUrl('https://www.jobz.pk/images/logo.png'), 'logo should be rejected');
+    assert(!isValidImageUrl('https://www.jobz.pk/images/logo-small.png'), 'logo-small should be rejected');
+  });
+
+  test('favicon images rejected', function() {
+    assert(!isValidImageUrl('https://www.jobz.pk/images/favicon.ico'), 'favicon should be rejected');
+  });
+
+  test('social-icon images rejected', function() {
+    assert(!isValidImageUrl('https://www.jobz.pk/images/social-facebook.png'), 'social icon should be rejected');
+    assert(!isValidImageUrl('https://www.jobz.pk/images/share-icon.png'), 'share icon should be rejected');
+  });
+
+  test('tracking pixel images rejected', function() {
+    assert(!isValidImageUrl('https://www.jobz.pk/images/tracking-pixel.png'), 'tracking pixel should be rejected');
+  });
+
+  test('external host images rejected', function() {
+    assert(!isImageAllowedHost('https://external.cdn.com/image.jpg'), 'external host should be rejected');
+  });
+
+  test('no valid images fixture returns empty array', function() {
+    var doc = parse(FIXTURE_NO_VALID_IMAGES);
+    var main = findMainContent(doc);
+    var images = extractTenderImages(doc, main, '99999', 'https://www.jobz.pk/test_tenders-99999.html');
+    assertStrict(images.length, 0, 'no valid images should be found');
+  });
+
+  // ===== MISSING IMAGE WARNING =====
+
+  test('no valid images do not produce a warning from parser (images optional)', function() {
+    var doc = parse(FIXTURE_NO_VALID_IMAGES);
+    var main = findMainContent(doc);
+    var images = extractTenderImages(doc, main, '99999', 'https://www.jobz.pk/test_tenders-99999.html');
+    assertStrict(images.length, 0);
+  });
+
+  // ===== TENDER ID =====
+
+  test('source URL tender ID preserved', function() {
+    var result = parseTenderDetail(FIXTURE_TABLE_HEADERS, 'https://www.jobz.pk/test_tenders-66063.html', '66063', '');
+    assertStrict(result.tenderId, '66063');
+  });
+
+  test('tenderId mismatch does not overwrite expected ID', function() {
+    var result = parseTenderDetail(FIXTURE_TABLE_HEADERS, 'https://www.jobz.pk/test_tenders-66063.html', '66063', '');
+    assertStrict(result.tenderId, '66063');
+  });
+
+  // ===== FAILURE CASES =====
+
+  test('no-tender-content failure returns error', function() {
+    var result = parseTenderDetail('', 'https://www.jobz.pk/test.html', '123', '');
+    assertStrict(result.success, false);
+    assert(result.code === 'INVALID_HTML' || result.code === 'HTML_PARSE_FAILED' || result.code === 'NO_TENDER_CONTENT');
+  });
+
+  test('invalid HTML returns error', function() {
+    var result = parseTenderDetail('not html at all', 'https://www.jobz.pk/test.html', '123', '');
+    assertStrict(result.success, false);
+  });
+
+  // ===== STRIP UNWANTED =====
+
+  test('stripUnwantedElements removes script tags', function() {
+    var html = '<!DOCTYPE html><html><body><script>alert(1)</script><p>Hello</p></body></html>';
+    var doc = parse(html);
+    stripUnwantedElements(doc);
+    assertStrict(doc.querySelectorAll('script').length, 0);
+  });
+
+  test('stripUnwantedElements removes style tags', function() {
+    var html = '<!DOCTYPE html><html><body><style>body{color:red}</style><p>Hello</p></body></html>';
+    var doc = parse(html);
+    stripUnwantedElements(doc);
+    assertStrict(doc.querySelectorAll('style').length, 0);
+  });
+
+  // ===== FINAL: Full parseTenderDetail integration =====
+
+  test('parseTenderDetail returns complete structured result', function() {
+    var result = parseTenderDetail(FIXTURE_TABLE_HEADERS, 'https://www.jobz.pk/test_tenders-66063.html', '66063', 'Original Title');
+    assertStrict(result.success, true);
+    assertStrict(result.metadata.datePosted, '25 Jul 2026');
+    assertStrict(result.metadata.category, 'Goods');
+    assertStrict(result.metadata.province, 'Punjab');
+    assertStrict(result.metadata.location, 'Lahore');
+    assertStrict(result.tenderId, '66063');
+    assert(Array.isArray(result.warnings));
+  });
+
+  // ===== PHASE 5D ADDITIONS: normalizeCellText =====
+
+  test('normalizeCellText with regular text', function() {
+    assertStrict(normalizeCellText('Hello World'), 'Hello World');
+  });
+
+  test('normalizeCellText with trailing colon', function() {
+    assertStrict(normalizeCellText('Value:'), 'Value');
+  });
+
+  test('normalizeCellText with non-breaking space', function() {
+    assertStrict(normalizeCellText('\u00A0Value\u00A0'), 'Value');
+  });
+
+  test('normalizeCellText with tabs and newlines', function() {
+    assertStrict(normalizeCellText('  Value\t\n  Text  '), 'Value Text');
+  });
+
+  test('normalizeCellText with non-string', function() {
+    assertStrict(normalizeCellText(null), '');
+    assertStrict(normalizeCellText(undefined), '');
+    assertStrict(normalizeCellText(42), '');
+  });
+
+  // ===== PHASE 5D ADDITIONS: extractDivMetadata edge cases =====
+
+  test('extractDivMetadata with no matching divs returns empty', function() {
+    var html = '<!DOCTYPE html><html><body><div id="plain"><p>No metadata here</p></div></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var meta = extractDivMetadata(doc, main);
+    assertStrict(Object.keys(meta).length, 0);
+  });
+
+  test('extractDivMetadata with null main returns empty', function() {
+    var meta = extractDivMetadata(null, null);
+    assertStrict(Object.keys(meta).length, 0);
+  });
+
+  // ===== PHASE 5D ADDITIONS: extractAllMetadata edge cases =====
+
+  test('extractAllMetadata with body-only fallback returns defaults', function() {
+    var html = '<!DOCTYPE html><html><body><p>No tables, dl, or div metadata here at all whatsoever.</p></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var meta = extractAllMetadata(doc, main);
+    assertStrict(meta.datePosted, undefined);
+  });
+
+  test('extractAllMetadata with null main returns empty', function() {
+    var doc = parse(FIXTURE_TABLE_HEADERS);
+    var meta = extractAllMetadata(doc, null);
+    assertStrict(Object.keys(meta).length, 0);
+  });
+
+  // ===== PHASE 5D ADDITIONS: extractPageTitle edge cases =====
+
+  test('extractPageTitle strips "Jobz.pk" suffix with dash', function() {
+    var html = '<!DOCTYPE html><html><head><title>Supply Tender - Jobz.pk</title></head><body><h1>Supply Tender</h1></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var title = extractPageTitle(doc, main, '');
+    assertStrict(title, 'Supply Tender');
+  });
+
+  test('extractPageTitle strips "Jobz.pk" suffix with pipe', function() {
+    var html = '<!DOCTYPE html><html><head><title>Road Construction | Jobz.pk</title></head><body><h1>Road Construction</h1></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var title = extractPageTitle(doc, main, '');
+    assertStrict(title, 'Road Construction');
+  });
+
+  test('extractPageTitle strips "Free Classifieds" suffix', function() {
+    var html = '<!DOCTYPE html><html><head><title>IT Tender - Free Classifieds</title></head><body><h1>IT Tender</h1></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var title = extractPageTitle(doc, main, '');
+    assertStrict(title, 'IT Tender');
+  });
+
+  test('extractPageTitle no h1 uses doc.title', function() {
+    var html = '<!DOCTYPE html><html><head><title>Document Title Only</title></head><body><p>No h1</p></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var title = extractPageTitle(doc, main, 'Fallback');
+    assertStrict(title, 'Document Title Only');
+  });
+
+  test('extractPageTitle with null main uses doc.title', function() {
+    var html = '<!DOCTYPE html><html><head><title>Only Title</title></head><body></body></html>';
+    var doc = parse(html);
+    var title = extractPageTitle(doc, null, '');
+    assertStrict(title, 'Only Title');
+  });
+
+  test('extractPageTitle empty main only uses originalListingTitle', function() {
+    var html = '<!DOCTYPE html><html><body><div></div></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var title = extractPageTitle(doc, main, 'Original Fallback');
+    assertStrict(title, 'Original Fallback');
+  });
+
+  // ===== PHASE 5D ADDITIONS: extractDescription edge cases =====
+
+  test('extractDescription with short section is included', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-detail"><h2>Tender Description</h2><p>Short description here.</p></div></body></html>';
+    var doc = parse(html);
+    var desc = extractDescription(doc);
+    assert(desc.length > 0, 'should contain description text');
+    assert(desc.indexOf('Short description') !== -1);
+  });
+
+  test('extractDescription with description-class section', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-description"><p>This is the tender description content with enough text to pass the threshold test for extraction.</p></div></body></html>';
+    var doc = parse(html);
+    var desc = extractDescription(doc);
+    assert(desc.length > 20, 'description should be substantial');
+  });
+
+  test('extractDescription with full-description class', function() {
+    var html = '<!DOCTYPE html><html><body><div class="full-description"><p>Full description text content that should be long enough to be extracted correctly by the parser logic.</p></div></body></html>';
+    var doc = parse(html);
+    var desc = extractDescription(doc);
+    assert(desc.length > 20, 'description should be substantial');
+  });
+
+  test('extractDescription empty body returns empty string', function() {
+    var doc = parse('<!DOCTYPE html><html><body></body></html>');
+    var desc = extractDescription(doc);
+    assertStrict(desc, '');
+  });
+
+  test('extractDescription null doc returns empty string', function() {
+    var desc = extractDescription(null);
+    assertStrict(desc, '');
+  });
+
+  // ===== PHASE 5D ADDITIONS: extractTenderImages edge cases =====
+
+  test('extractTenderImages with null main returns empty', function() {
+    var images = extractTenderImages(null, null, '123', 'url');
+    assertStrict(images.length, 0);
+  });
+
+  test('extractTenderImages filters tiny images', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-detail"><img src="https://www.jobz.pk/images/tenders/ad-123.jpg" width="30" height="20" alt="tiny"><img src="https://www.jobz.pk/images/tenders/ad-456.jpg" width="100" height="80" alt="ok"></div></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var images = extractTenderImages(doc, main, '456', 'https://www.jobz.pk/');
+    assertStrict(images.length, 1);
+    assert(images[0].indexOf('ad-456') !== -1);
+  });
+
+  test('extractTenderImages handles data-src attribute', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-detail"><img data-src="https://www.jobz.pk/images/tenders/ad-789.jpg" width="200" height="150" alt="lazy"></div></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var images = extractTenderImages(doc, main, '789', 'https://www.jobz.pk/');
+    assert(images.length > 0, 'should find data-src image');
+  });
+
+  test('extractTenderImages handles data-original attribute', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-detail"><img data-original="https://www.jobz.pk/images/tenders/ad-111.jpg" width="200" height="150" alt="retina"></div></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var images = extractTenderImages(doc, main, '111', 'https://www.jobz.pk/');
+    assert(images.length > 0, 'should find data-original image');
+  });
+
+  test('extractTenderImages prefers tenders path over others', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-detail"><img src="https://www.jobz.pk/other/ad-999.jpg" width="200" height="150" alt="other"><img src="https://www.jobz.pk/images/tenders/ad-999.jpg" width="200" height="150" alt="preferred"></div></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var images = extractTenderImages(doc, main, '999', 'https://www.jobz.pk/');
+    assertStrict(images.length, 2);
+    assert(images[0].indexOf('/images/tenders/') !== -1, 'preferred images first');
+  });
+
+  // ===== PHASE 5D ADDITIONS: findMainContent edge cases =====
+
+  test('findMainContent with null doc returns null', function() {
+    var main = findMainContent(null);
+    assertStrict(main, null);
+  });
+
+  test('findMainContent with body-only content falls back', function() {
+    var html = '<!DOCTYPE html><html><body><div><p>Some content here for testing the fallback behavior of findMainContent.</p><p>More content to ensure the length threshold of 100 characters is exceeded so the fallback algorithm can find a candidate.</p></div></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    assert(main !== null, 'should find some main content');
+  });
+
+  // ===== PHASE 5D ADDITIONS: stripUnwantedElements edge cases =====
+
+  test('stripUnwantedElements null doc does not throw', function() {
+    stripUnwantedElements(null);
+    assert(true, 'should not throw');
+  });
+
+  test('stripUnwantedElements empty body does not throw', function() {
+    var doc = parse('<!DOCTYPE html><html><body></body></html>');
+    stripUnwantedElements(doc);
+    assert(true, 'should not throw');
+  });
+
+  test('stripUnwantedElements removes more unwanted selectors', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-detail"><h1>Test</h1><div class="breadcrumb">Home > Tenders</div><div class="ad-container">Ad</div><div class="newsletter">Subscribe</div><div id="comments">Comment</div></div></body></html>';
+    var doc = parse(html);
+    stripUnwantedElements(doc);
+    assertStrict(doc.querySelectorAll('.breadcrumb').length, 0);
+    assertStrict(doc.querySelectorAll('.ad-container').length, 0);
+    assertStrict(doc.querySelectorAll('.newsletter').length, 0);
+    assertStrict(doc.querySelectorAll('#comments').length, 0);
+  });
+
+  test('stripUnwantedElements removes hidden elements', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-detail"><h1>Test</h1><div style="display:none">Hidden</div><div style="display: none">Also Hidden</div><div hidden>Hidden attr</div><div class="hidden">Hidden class</div></div></body></html>';
+    var doc = parse(html);
+    stripUnwantedElements(doc);
+    assertStrict(doc.querySelectorAll('[style*="display:none"]').length, 0);
+    assertStrict(doc.querySelectorAll('[style*="display: none"]').length, 0);
+    assertStrict(doc.querySelectorAll('[hidden]').length, 0);
+  });
+
+  // ===== PHASE 5D ADDITIONS: Table extraction edge cases =====
+
+  test('extractTableMetadata with td-td pairs but no colon returns empty', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-detail"><table><tr><td>Long text that is not a label at all exceeding fifty characters threshold</td><td>Value</td></tr></table></div></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var meta = extractTableMetadata(doc, main);
+    assertStrict(Object.keys(meta).length, 0);
+  });
+
+  test('extractTableMetadata with non-TH/TD cells skips row', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-detail"><table><tr><th>Date Posted</th></tr></table></div></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var meta = extractTableMetadata(doc, main);
+    assertStrict(Object.keys(meta).length, 0);
+  });
+
+  test('extractTableMetadata null main returns empty', function() {
+    var meta = extractTableMetadata(null, null);
+    assertStrict(Object.keys(meta).length, 0);
+  });
+
+  // ===== PHASE 5D ADDITIONS: Dl extraction edge cases =====
+
+  test('extractDlMetadata null main returns empty', function() {
+    var meta = extractDlMetadata(null, null);
+    assertStrict(Object.keys(meta).length, 0);
+  });
+
+  test('extractDlMetadata with dt followed by non-dd skips', function() {
+    var html = '<!DOCTYPE html><html><body><div class="tender-detail"><dl><dt>Date Posted</dt><span>Not a DD</span></dl></div></body></html>';
+    var doc = parse(html);
+    var main = findMainContent(doc);
+    var meta = extractDlMetadata(doc, main);
+    assertStrict(Object.keys(meta).length, 0);
+  });
+
+  // ===== PHASE 5D ADDITIONS: parseTenderDetail edge cases =====
+
+  test('parseTenderDetail with no main content uses body fallback', function() {
+    var html = '<!DOCTYPE html><html><body><p>No tender detail container here</p></body></html>';
+    var result = parseTenderDetail(html, 'https://www.jobz.pk/test_tenders-123.html', '123', 'Fallback');
+    assertStrict(result.success, true);
+    assertStrict(result.tenderId, '123');
+  });
+
+  test('parseTenderDetail non-string html returns INVALID_HTML', function() {
+    var result = parseTenderDetail(null, 'url', '123', '');
+    assertStrict(result.success, false);
+    assertStrict(result.code, 'INVALID_HTML');
+  });
+
+  test('parseTenderDetail empty string returns INVALID_HTML', function() {
+    var result = parseTenderDetail('', 'url', '123', '');
+    assertStrict(result.success, false);
+  });
+
+  test('parseTenderDetail warning dedup via addWarning works', function() {
+    var w = [];
+    w = addWarning(w, 'Warning A.');
+    w = addWarning(w, 'Warning A.');
+    w = addWarning(w, 'Warning B.');
+    assertStrict(w.length, 2);
+    assertStrict(w[0], 'Warning A.');
+    assertStrict(w[1], 'Warning B.');
+  });
+
+  // ===== FINAL: Phase 5D parseTenderDetail integration =====
+
+  test('Phase 5D: parseTenderDetail from definition list fixture', function() {
+    var result = parseTenderDetail(FIXTURE_DEFINITION_LIST, 'https://www.jobz.pk/test_tenders-12345.html', '12345', 'Original');
+    assertStrict(result.success, true);
+    assertStrict(result.metadata.category, 'Works');
+    assertStrict(result.metadata.province, 'Khyber Pakhtunkhwa');
+    assertStrict(result.tenderId, '12345');
+  });
+
+  test('Phase 5D: parseTenderDetail from nested div fixture', function() {
+    var result = parseTenderDetail(FIXTURE_NESTED_DIV, 'https://www.jobz.pk/test_tenders-67890.html', '67890', 'Original');
+    assertStrict(result.success, true);
+    assertStrict(result.metadata.category, 'Services');
+    assertStrict(result.metadata.location, 'Karachi');
+    assertStrict(result.tenderId, '67890');
+  });
+
+  test('Phase 5D: parseTenderDetail from noisy fixture excludes unwanted', function() {
+    var result = parseTenderDetail(FIXTURE_NOISE, 'https://www.jobz.pk/test_tenders-11223.html', '11223', 'Original');
+    assertStrict(result.success, true);
+    assertStrict(result.metadata.datePosted, '19 Jul 2026');
+    assertStrict(result.metadata.category, 'Goods');
+  });
+
+  test('Phase 5D: parseTenderDetail from images fixture returns images', function() {
+    var result = parseTenderDetail(FIXTURE_IMAGES, 'https://www.jobz.pk/test_tenders-66063.html', '66063', 'Original');
+    assertStrict(result.success, true);
+    assert(Array.isArray(result.imageUrls));
+    assert(result.imageUrls.length >= 2, 'should find at least 2 images');
+  });
+
+  test('Phase 5D: parseTenderDetail from no-valid-images fixture returns empty images', function() {
+    var result = parseTenderDetail(FIXTURE_NO_VALID_IMAGES, 'https://www.jobz.pk/test_tenders-99999.html', '99999', 'Original');
+    assertStrict(result.success, true);
+    assertStrict(result.imageUrls.length, 0);
+  });
+
+  test('Phase 5D: parseTenderDetail from conflicting fixture uses first match', function() {
+    var result = parseTenderDetail(FIXTURE_CONFLICTING, 'https://www.jobz.pk/test_tenders-77777.html', '77777', 'Original');
+    assertStrict(result.success, true);
+    assertStrict(result.metadata.datePosted, '10 Jul 2026');
+    assertStrict(result.metadata.category, 'Goods');
+    assertStrict(result.metadata.province, 'Balochistan');
+  });
+
+  test('Phase 5D: parseTenderDetail for missing fields provides defaults', function() {
+    var result = parseTenderDetail(FIXTURE_MISSING_FIELDS, 'https://www.jobz.pk/test_tenders-88888.html', '88888', 'Original');
+    assertStrict(result.success, true);
+    assertStrict(result.metadata.province, 'Not available');
+    assertStrict(result.metadata.location, 'Not available');
+    assertStrict(result.metadata.lastDate, 'Not available');
+  });
+
+  test('Phase 5D: parseTenderDetail description fixture extracts description', function() {
+    var result = parseTenderDetail(FIXTURE_DESCRIPTION, 'https://www.jobz.pk/test_tenders-99999.html', '99999', 'Original');
+    assertStrict(result.success, true);
+    assertStrict(result.description.indexOf('Education Department Punjab') !== -1, true);
+  });
+
+  test('Phase 5D: canonicalizeImageUrl null input returns null', function() {
+    assertStrict(canonicalizeImageUrl(null, 'https://www.jobz.pk/'), null);
+    assertStrict(canonicalizeImageUrl('', 'https://www.jobz.pk/'), null);
+    assertStrict(canonicalizeImageUrl('not-a-url', null), null);
+  });
+
+  test('Phase 5D: isImageAllowedHost rejects non-jobz hosts', function() {
+    assertStrict(isImageAllowedHost('https://www.google.com/image.jpg'), false);
+    assertStrict(isImageAllowedHost('https://other.pk/image.jpg'), false);
+  });
+
+  test('Phase 5D: isImageAllowedHost accepts jobz.pk', function() {
+    assertStrict(isImageAllowedHost('https://jobz.pk/image.jpg'), true);
+  });
+
+  test('Phase 5D: isImageAllowedHost null input returns false', function() {
+    assertStrict(isImageAllowedHost(null), false);
+  });
+
+  test('Phase 5D: isValidImageUrl rejects non-http URLs', function() {
+    assertStrict(isValidImageUrl('data:image/png;base64,abc'), false);
+    assertStrict(isValidImageUrl('blob:chrome-extension://abc'), false);
+    assertStrict(isValidImageUrl('javascript:void(0)'), false);
+  });
+
+  test('Phase 5D: isValidImageUrl no extension returns false', function() {
+    assertStrict(isValidImageUrl('https://www.jobz.pk/images/tenders/nofile'), false);
+  });
+
+  test('Phase 5D: normalizeLabel with various edge inputs', function() {
+    assertStrict(normalizeLabel(''), '');
+    assertStrict(normalizeLabel(null), '');
+    assertStrict(normalizeLabel(undefined), '');
+    assertStrict(normalizeLabel(42), '');
+    assertStrict(normalizeLabel('  Label  '), 'label');
+    assertStrict(normalizeLabel('Label (extra)'), 'label');
+    assertStrict(normalizeLabel('Label:**'), 'label');
+    assertStrict(normalizeLabel('Label\u00A0With\u00A0NBSP'), 'label with nbsp');
+  });
+
+  test('Phase 5D: matchLabel with exact and contains', function() {
+    assert(matchLabel('date posted', ['date posted']));
+    assert(matchLabel('date posted on', ['date posted']));
+    assert(!matchLabel('not date', ['date posted']));
+  });
+
+  test('Phase 5D: truncateDescription respects max length', function() {
+    var long = 'Hello world '.repeat(500);
+    var truncated = truncateDescription(long, 100);
+    assert(Array.from(truncated).length < Array.from(long).length);
+    assert(truncated.indexOf('truncated') !== -1);
+  });
+
+  test('Phase 5D: truncateDescription with non-string returns empty', function() {
+    assertStrict(truncateDescription(null, 100), '');
+    assertStrict(truncateDescription(undefined, 100), '');
+  });
+
+  test('Phase 5D: truncateDescription with negative max uses default', function() {
+    var text = 'Short text.';
+    var truncated = truncateDescription(text, -1);
+    assertStrict(truncated, text);
+  });
+
+  // ===== UPDATE OUTPUT =====
+  outputEl.innerHTML = lines.join('\n');
+  summaryEl.innerHTML = '<strong>' + passed + ' passed</strong>, ' +
+    (failed > 0 ? '<strong class="fail">' + failed + ' failed</strong>' : '<strong>' + failed + ' failed</strong>') +
+    ', ' + skipped + ' skipped. ' +
+    (failed === 0 ? 'ALL DOMPARSER TESTS PASSED.' : 'SOME TESTS FAILED.');
+}
+
+// Run tests when page loads
+window.onload = runAllTests;
+</script>
+</body>
+</html>

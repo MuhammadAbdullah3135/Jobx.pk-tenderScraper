@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 3C — Validation Tests</title>
+<style>
+body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+h1 { font-size: 18px; }
+.pass { color: #080; }
+.fail { color: #c00; font-weight: bold; }
+.summary { margin-top: 20px; padding: 12px; background: #fff; border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<h1>Phase 3C — Extension Validation Tests</h1>
+<p>Phase 3C — Pure-logic tests for URL validation, pagination detection, response normalization, text normalization, tender-detail URL validation, tender response normalization, deduplication, and button enablement decisions. No Chrome extension API calls required.</p>
+<pre id="output"></pre>
+<div id="summary" class="summary"></div>
+
+<script>
+// ===== Functions under test (mirror of production logic) =====
+
+function checkPageUrl(url) {
+  try {
+    var parsedUrl = new URL(url);
+    if (parsedUrl.hostname !== 'www.jobz.pk') {
+      return { supported: false, pageNumber: null, pageUrl: url, reason: 'Please open a Jobz.pk tender listing page.' };
+    }
+    var match = parsedUrl.pathname.match(/^\/tenders-(\d+)\/?$/);
+    if (match) {
+      var pageNum = parseInt(match[1], 10);
+      if (isPositiveInteger(pageNum)) {
+        return { supported: true, pageNumber: pageNum, pageUrl: url, reason: null };
+      }
+    }
+    return { supported: false, pageNumber: null, pageUrl: url, reason: 'Please open a Jobz.pk tender listing page.' };
+  } catch (e) {
+    return { supported: false, pageNumber: null, pageUrl: url || null, reason: 'The current browser tab cannot be inspected.' };
+  }
+}
+
+function isPositiveInteger(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && Math.floor(value) === value;
+}
+
+function extractNumber(text) {
+  if (!text) return null;
+  var match = text.trim().match(/(\d+)/);
+  if (!match) return null;
+  var num = parseInt(match[1], 10);
+  if (!Number.isFinite(num) || num < 1 || num > 100000) return null;
+  return num;
+}
+
+function extractNumberFromPageText(text) {
+  if (!text) return null;
+  var match = text.match(/[Pp]age\s*(\d+)/);
+  if (match) {
+    var num = parseInt(match[1], 10);
+    if (Number.isFinite(num) && num >= 1 && num <= 100000) return num;
+  }
+  return null;
+}
+
+function detectPathname(pathname) {
+  var match = pathname.match(/^\/tenders-(\d+)\/?$/);
+  if (match) {
+    var num = parseInt(match[1], 10);
+    if (Number.isFinite(num) && num >= 1) return num;
+  }
+  return null;
+}
+
+function normalizeResponse(inspectionResult, urlResult) {
+  if (inspectionResult && inspectionResult.inspectedUrl) {
+    return 'stale navigation would be detected';
+  }
+  if (inspectionResult && inspectionResult.success && isPositiveInteger(inspectionResult.pageNumber)) {
+    return { supported: true, pageNumber: inspectionResult.pageNumber, reason: null };
+  }
+  if (urlResult && isPositiveInteger(urlResult.pageNumber)) {
+    return { supported: true, pageNumber: urlResult.pageNumber, reason: null };
+  }
+  return { supported: true, pageNumber: null, reason: 'inspection failed' };
+}
+
+// ===== Test runner =====
+
+var output = document.getElementById('output');
+var passed = 0;
+var failed = 0;
+
+function test(description, actual, expected) {
+  var ok = actual === expected;
+  if (ok) {
+    passed++;
+    output.textContent += 'PASS: ' + description + '\n';
+  } else {
+    failed++;
+    output.textContent += 'FAIL: ' + description + '\n';
+    output.textContent += '  expected: ' + JSON.stringify(expected) + '\n';
+    output.textContent += '  actual:   ' + JSON.stringify(actual) + '\n';
+  }
+}
+
+function testObject(description, actual, expected) {
+  var ok = JSON.stringify(actual) === JSON.stringify(expected);
+  if (ok) {
+    passed++;
+    output.textContent += 'PASS: ' + description + '\n';
+  } else {
+    failed++;
+    output.textContent += 'FAIL: ' + description + '\n';
+    output.textContent += '  expected: ' + JSON.stringify(expected) + '\n';
+    output.textContent += '  actual:   ' + JSON.stringify(actual) + '\n';
+  }
+}
+
+// ===== 1. URL validation tests =====
+
+output.textContent += '--- URL Validation ---\n';
+
+testObject('Supported: /tenders-1/',
+  checkPageUrl('https://www.jobz.pk/tenders-1/'),
+  { supported: true, pageNumber: 1, pageUrl: 'https://www.jobz.pk/tenders-1/', reason: null });
+
+testObject('Supported: /tenders-2/',
+  checkPageUrl('https://www.jobz.pk/tenders-2/'),
+  { supported: true, pageNumber: 2, pageUrl: 'https://www.jobz.pk/tenders-2/', reason: null });
+
+testObject('Supported: /tenders-15/ (no trailing slash)',
+  checkPageUrl('https://www.jobz.pk/tenders-15'),
+  { supported: true, pageNumber: 15, pageUrl: 'https://www.jobz.pk/tenders-15', reason: null });
+
+testObject('Supported: /tenders-100/',
+  checkPageUrl('https://www.jobz.pk/tenders-100/'),
+  { supported: true, pageNumber: 100, pageUrl: 'https://www.jobz.pk/tenders-100/', reason: null });
+
+testObject('Unsupported: home page /',
+  checkPageUrl('https://www.jobz.pk/'),
+  { supported: false, pageNumber: null, pageUrl: 'https://www.jobz.pk/', reason: 'Please open a Jobz.pk tender listing page.' });
+
+testObject('Unsupported: /jobs/',
+  checkPageUrl('https://www.jobz.pk/jobs/'),
+  { supported: false, pageNumber: null, pageUrl: 'https://www.jobz.pk/jobs/', reason: 'Please open a Jobz.pk tender listing page.' });
+
+testObject('Unsupported: tender-detail _tenders-66063.html',
+  checkPageUrl('https://www.jobz.pk/example_tenders-66063.html'),
+  { supported: false, pageNumber: null, pageUrl: 'https://www.jobz.pk/example_tenders-66063.html', reason: 'Please open a Jobz.pk tender listing page.' });
+
+testObject('Unsupported: google.com',
+  checkPageUrl('https://www.google.com/'),
+  { supported: false, pageNumber: null, pageUrl: 'https://www.google.com/', reason: 'Please open a Jobz.pk tender listing page.' });
+
+testObject('Unsupported: chrome://extensions/',
+  checkPageUrl('chrome://extensions/'),
+  { supported: false, pageNumber: null, pageUrl: 'chrome://extensions/', reason: 'Please open a Jobz.pk tender listing page.' });
+
+testObject('Unsupported: edge://extensions/',
+  checkPageUrl('edge://extensions/'),
+  { supported: false, pageNumber: null, pageUrl: 'edge://extensions/', reason: 'Please open a Jobz.pk tender listing page.' });
+
+testObject('Unsupported: about:blank',
+  checkPageUrl('about:blank'),
+  { supported: false, pageNumber: null, pageUrl: 'about:blank', reason: 'Please open a Jobz.pk tender listing page.' });
+
+// ===== 2. Number parsing tests =====
+
+output.textContent += '\n--- Number Parsing (extractNumber) ---\n';
+
+test('extractNumber: "2"', extractNumber('2'), 2);
+test('extractNumber: "Page 2"', extractNumber('Page 2'), 2);
+test('extractNumber: "2 of 15"', extractNumber('2 of 15'), 2);
+test('extractNumber: empty string', extractNumber(''), null);
+test('extractNumber: no digits', extractNumber('abc'), null);
+test('extractNumber: zero is rejected', extractNumber('0'), null);
+test('extractNumber: negative rejected', extractNumber('-1'), null);
+test('extractNumber: decimal accepted (uses integer part)', extractNumber('2.5'), 2);
+
+output.textContent += '\n--- Number Parsing (extractNumberFromPageText) ---\n';
+
+test('extractNumberFromPageText: "Page 2"', extractNumberFromPageText('Page 2'), 2);
+test('extractNumberFromPageText: "Current Page 2"', extractNumberFromPageText('Current Page 2'), 2);
+test('extractNumberFromPageText: "page 15"', extractNumberFromPageText('page 15'), 15);
+test('extractNumberFromPageText: "2 of 15" (no "Page")', extractNumberFromPageText('2 of 15'), null);
+test('extractNumberFromPageText: just "2"', extractNumberFromPageText('2'), null);
+test('extractNumberFromPageText: "Tenders - Page 3"', extractNumberFromPageText('Tenders - Page 3'), 3);
+test('extractNumberFromPageText: no match', extractNumberFromPageText('No page here'), null);
+
+// ===== 3. Pathname detection tests =====
+
+output.textContent += '\n--- Pathname Detection ---\n';
+
+test('detectPathname: /tenders-1/', detectPathname('/tenders-1/'), 1);
+test('detectPathname: /tenders-15', detectPathname('/tenders-15'), 15);
+test('detectPathname: /tenders-100/', detectPathname('/tenders-100/'), 100);
+test('detectPathname: / (no match)', detectPathname('/'), null);
+test('detectPathname: /jobs/', detectPathname('/jobs/'), null);
+test('detectPathname: /example_tenders-66063.html', detectPathname('/example_tenders-66063.html'), null);
+test('detectPathname: /tenders- (no digits)', detectPathname('/tenders-'), null);
+test('detectPathname: /tenders-abc/', detectPathname('/tenders-abc/'), null);
+
+// ===== 4. isPositiveInteger tests =====
+
+output.textContent += '\n--- Positive Integer Validation ---\n';
+
+test('isPositiveInteger: 5', isPositiveInteger(5), true);
+test('isPositiveInteger: 1', isPositiveInteger(1), true);
+test('isPositiveInteger: 100000', isPositiveInteger(100000), true);
+test('isPositiveInteger: 0', isPositiveInteger(0), false);
+test('isPositiveInteger: -1', isPositiveInteger(-1), false);
+test('isPositiveInteger: 2.5', isPositiveInteger(2.5), false);
+test('isPositiveInteger: null', isPositiveInteger(null), false);
+test('isPositiveInteger: undefined', isPositiveInteger(undefined), false);
+test('isPositiveInteger: "5" (string)', isPositiveInteger('5'), false);
+test('isPositiveInteger: NaN', isPositiveInteger(NaN), false);
+test('isPositiveInteger: Infinity', isPositiveInteger(Infinity), false);
+
+// ===== 5. Response normalization tests =====
+
+output.textContent += '\n--- Response Normalization ---\n';
+
+test('normalizeResponse: valid inspection',
+  normalizeResponse({ success: true, pageNumber: 3, inspectedUrl: 'https://www.jobz.pk/tenders-3/' }, { pageNumber: 3 }).pageNumber, 3);
+
+test('normalizeResponse: inspection fails, url result used',
+  normalizeResponse({ success: false, pageNumber: null, inspectedUrl: 'https://www.jobz.pk/tenders-3/' }, { pageNumber: 5 }).pageNumber, 5);
+
+test('normalizeResponse: inspection decimal pageNumber, url used',
+  normalizeResponse({ success: true, pageNumber: 2.5, inspectedUrl: 'https://www.jobz.pk/tenders-1/' }, { pageNumber: 1 }).pageNumber, 1);
+
+// ===== 6. Text normalization tests =====
+
+output.textContent += '\n--- Text Normalization (normalizeText) ---\n';
+
+function normalizeText(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/\u00A0/g, ' ')
+              .replace(/[\t\n\r]+/g, ' ')
+              .replace(/[ ]+/g, ' ')
+              .trim();
+}
+
+test('normalizeText: normal string', normalizeText('Hello World'), 'Hello World');
+test('normalizeText: leading/trailing spaces', normalizeText('  Hello  '), 'Hello');
+test('normalizeText: tabs and newlines', normalizeText('Hello\t\nWorld'), 'Hello World');
+test('normalizeText: multiple spaces', normalizeText('Hello   World'), 'Hello World');
+test('normalizeText: non-breaking spaces', normalizeText('Hello\u00A0World'), 'Hello World');
+test('normalizeText: mixed whitespace', normalizeText('\t Hello \u00A0 World \n '), 'Hello World');
+test('normalizeText: empty string', normalizeText(''), '');
+test('normalizeText: null input', normalizeText(null), '');
+test('normalizeText: number input', normalizeText(42), '');
+test('normalizeText: only whitespace', normalizeText('   \t\n  '), '');
+
+// ===== 7. Tender-detail URL validation tests =====
+
+output.textContent += '\n--- Tender-Detail URL Validation (normalizeTenderUrl) ---\n';
+
+function normalizeTenderUrl(rawHref, currentUrl) {
+  if (!rawHref || typeof rawHref !== 'string') {
+    return { valid: false, url: null, id: null, reason: 'Empty or missing URL.' };
+  }
+  var trimmed = rawHref.trim();
+  if (trimmed === '' || trimmed === '#') {
+    return { valid: false, url: null, id: null, reason: 'Empty or hash-only URL.' };
+  }
+  var lower = trimmed.toLowerCase();
+  if (lower.indexOf('javascript:') === 0) {
+    return { valid: false, url: null, id: null, reason: 'JavaScript URL rejected.' };
+  }
+  if (lower.indexOf('mailto:') === 0) {
+    return { valid: false, url: null, id: null, reason: 'Mailto URL rejected.' };
+  }
+  if (lower.indexOf('tel:') === 0) {
+    return { valid: false, url: null, id: null, reason: 'Tel URL rejected.' };
+  }
+  var resolved;
+  try {
+    if (!currentUrl || typeof currentUrl !== 'string') {
+      resolved = new URL(trimmed, 'https://www.jobz.pk');
+    } else {
+      resolved = new URL(trimmed, currentUrl);
+    }
+  } catch (e) {
+    return { valid: false, url: null, id: null, reason: 'URL could not be parsed.' };
+  }
+  if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
+    return { valid: false, url: null, id: null, reason: 'Only HTTP and HTTPS URLs are accepted.' };
+  }
+  var hostname = resolved.hostname.toLowerCase();
+  if (hostname !== 'www.jobz.pk' && hostname !== 'jobz.pk') {
+    return { valid: false, url: null, id: null, reason: 'Hostname is not a supported Jobz.pk domain.' };
+  }
+  var pathname = resolved.pathname;
+  var match = pathname.match(/_tenders-(\d+)\.html$/);
+  if (!match) {
+    return { valid: false, url: null, id: null, reason: 'Pathname does not match a tender-detail pattern.' };
+  }
+  var id = parseInt(match[1], 10);
+  if (!Number.isFinite(id) || id < 1) {
+    return { valid: false, url: null, id: null, reason: 'Tender ID is not a positive integer.' };
+  }
+  resolved.protocol = 'https:';
+  resolved.hostname = 'www.jobz.pk';
+  resolved.hash = '';
+  resolved.search = '';
+  return { valid: true, url: resolved.href, id: id, reason: null };
+}
+
+testObject('Valid: https absolute',
+  normalizeTenderUrl('https://www.jobz.pk/example-title_tenders-12345.html', 'https://www.jobz.pk/tenders-1/'),
+  { valid: true, url: 'https://www.jobz.pk/example-title_tenders-12345.html', id: 12345, reason: null });
+
+testObject('Valid: http jobz.pk (no www)',
+  normalizeTenderUrl('http://jobz.pk/example_tenders-66063.html', 'https://www.jobz.pk/tenders-1/'),
+  { valid: true, url: 'https://www.jobz.pk/example_tenders-66063.html', id: 66063, reason: null });
+
+testObject('Valid: relative path',
+  normalizeTenderUrl('/example-title_tenders-98765.html', 'https://www.jobz.pk/tenders-1/'),
+  { valid: true, url: 'https://www.jobz.pk/example-title_tenders-98765.html', id: 98765, reason: null });
+
+testObject('Valid: relative with query (stripped)',
+  normalizeTenderUrl('/test_tenders-555.html?tracking=abc', 'https://www.jobz.pk/tenders-1/'),
+  { valid: true, url: 'https://www.jobz.pk/test_tenders-555.html', id: 555, reason: null });
+
+testObject('Valid: relative with fragment (stripped)',
+  normalizeTenderUrl('/test_tenders-777.html#section', 'https://www.jobz.pk/tenders-1/'),
+  { valid: true, url: 'https://www.jobz.pk/test_tenders-777.html', id: 777, reason: null });
+
+test('Rejected: listing page URL',
+  normalizeTenderUrl('https://www.jobz.pk/tenders-2/', 'https://www.jobz.pk/tenders-1/').valid, false);
+
+test('Rejected: home page',
+  normalizeTenderUrl('https://www.jobz.pk/', 'https://www.jobz.pk/tenders-1/').valid, false);
+
+test('Rejected: /jobs/ page',
+  normalizeTenderUrl('https://www.jobz.pk/jobs/', 'https://www.jobz.pk/tenders-1/').valid, false);
+
+test('Rejected: google.com',
+  normalizeTenderUrl('https://www.google.com/example_tenders-12345.html', 'https://www.jobz.pk/tenders-1/').valid, false);
+
+test('Rejected: javascript:',
+  normalizeTenderUrl('javascript:void(0)', 'https://www.jobz.pk/tenders-1/').valid, false);
+
+test('Rejected: mailto:',
+  normalizeTenderUrl('mailto:test@example.com', 'https://www.jobz.pk/tenders-1/').valid, false);
+
+test('Rejected: tel:',
+  normalizeTenderUrl('tel:12345', 'https://www.jobz.pk/tenders-1/').valid, false);
+
+test('Rejected: hash-only',
+  normalizeTenderUrl('#section', 'https://www.jobz.pk/tenders-1/').valid, false);
+
+test('Rejected: empty',
+  normalizeTenderUrl('', 'https://www.jobz.pk/tenders-1/').valid, false);
+
+test('Rejected: null',
+  normalizeTenderUrl(null, 'https://www.jobz.pk/tenders-1/').valid, false);
+
+test('Rejected: //www.jobz.pk without protocol',
+  normalizeTenderUrl('//www.jobz.pk/test_tenders-1.html', 'https://www.jobz.pk/tenders-1/').valid, false);
+
+// ===== 8. Phase 3B: Tender response normalization =====
+
+output.textContent += '\n--- Phase 3B: Tender Response Normalization ---\n';
+
+function normalizeTenderResponse(inspectionResult) {
+  var tenders = [];
+  if (inspectionResult && Array.isArray(inspectionResult.tenders)) {
+    for (var i = 0; i < inspectionResult.tenders.length; i++) {
+      var t = inspectionResult.tenders[i];
+      if (t && typeof t === 'object' && typeof t.detailUrl === 'string' && typeof t.originalListingTitle === 'string') {
+        tenders.push({
+          listingPosition: i + 1,
+          originalListingTitle: t.originalListingTitle,
+          city: typeof t.city === 'string' ? t.city : 'Not available',
+          datePosted: typeof t.datePosted === 'string' ? t.datePosted : 'Not available',
+          detailUrl: t.detailUrl
+        });
+      }
+    }
+  }
+  return {
+    tenderCount: tenders.length,
+    tenders: tenders,
+    warnings: inspectionResult && Array.isArray(inspectionResult.warnings) ? inspectionResult.warnings : []
+  };
+}
+
+testObject('Tender normalization: valid tender record kept',
+  normalizeTenderResponse({
+    tenders: [{
+      listingPosition: 1,
+      originalListingTitle: 'Test Tender',
+      city: 'LAHORE',
+      datePosted: '22 Jul 2026',
+      detailUrl: 'https://www.jobz.pk/test_tenders-12345.html'
+    }],
+    warnings: []
+  }),
+  {
+    tenderCount: 1,
+    tenders: [{
+      listingPosition: 1,
+      originalListingTitle: 'Test Tender',
+      city: 'LAHORE',
+      datePosted: '22 Jul 2026',
+      detailUrl: 'https://www.jobz.pk/test_tenders-12345.html'
+    }],
+    warnings: []
+  });
+
+testObject('Tender normalization: missing city and date default to Not available',
+  normalizeTenderResponse({
+    tenders: [{
+      listingPosition: 1,
+      originalListingTitle: 'Test Tender',
+      detailUrl: 'https://www.jobz.pk/test_tenders-12345.html'
+    }],
+    warnings: []
+  }),
+  {
+    tenderCount: 1,
+    tenders: [{
+      listingPosition: 1,
+      originalListingTitle: 'Test Tender',
+      city: 'Not available',
+      datePosted: 'Not available',
+      detailUrl: 'https://www.jobz.pk/test_tenders-12345.html'
+    }],
+    warnings: []
+  });
+
+testObject('Tender normalization: entry missing detailUrl is stripped',
+  normalizeTenderResponse({
+    tenders: [
+      {
+        originalListingTitle: 'Tender A',
+        detailUrl: 'https://www.jobz.pk/a_tenders-1.html'
+      },
+      {
+        originalListingTitle: 'Tender B'
+        // no detailUrl
+      }
+    ],
+    warnings: []
+  }),
+  {
+    tenderCount: 1,
+    tenders: [{
+      listingPosition: 1,
+      originalListingTitle: 'Tender A',
+      city: 'Not available',
+      datePosted: 'Not available',
+      detailUrl: 'https://www.jobz.pk/a_tenders-1.html'
+    }],
+    warnings: []
+  });
+
+testObject('Tender normalization: positions reassigned after stripping',
+  normalizeTenderResponse({
+    tenders: [
+      { originalListingTitle: 'First', detailUrl: 'https://www.jobz.pk/1_tenders-1.html' },
+      { originalListingTitle: 'Second', detailUrl: 'https://www.jobz.pk/2_tenders-2.html' }
+    ],
+    warnings: []
+  }),
+  {
+    tenderCount: 2,
+    tenders: [
+      { listingPosition: 1, originalListingTitle: 'First', city: 'Not available', datePosted: 'Not available', detailUrl: 'https://www.jobz.pk/1_tenders-1.html' },
+      { listingPosition: 2, originalListingTitle: 'Second', city: 'Not available', datePosted: 'Not available', detailUrl: 'https://www.jobz.pk/2_tenders-2.html' }
+    ],
+    warnings: []
+  });
+
+testObject('Tender normalization: empty tenders array',
+  normalizeTenderResponse({ tenders: [], warnings: [] }),
+  { tenderCount: 0, tenders: [], warnings: [] });
+
+testObject('Tender normalization: undefined tenders field',
+  normalizeTenderResponse({}),
+  { tenderCount: 0, tenders: [], warnings: [] });
+
+testObject('Tender normalization: null inspection result',
+  normalizeTenderResponse(null),
+  { tenderCount: 0, tenders: [], warnings: [] });
+
+// ===== 9. Phase 3B: Deduplication logic =====
+
+output.textContent += '\n--- Phase 3B: Deduplication by Canonical URL ---\n';
+
+function deduplicateCandidates(candidates) {
+  var urlMap = {};
+  var deduplicated = [];
+
+  for (var ci = 0; ci < candidates.length; ci++) {
+    var url = candidates[ci].canonicalUrl;
+    if (urlMap[url] !== undefined) {
+      var existing = deduplicated[urlMap[url]];
+      if (!existing.isVisible && candidates[ci].isVisible) {
+        deduplicated[urlMap[url]] = candidates[ci];
+      }
+      continue;
+    }
+    urlMap[url] = deduplicated.length;
+    deduplicated.push(candidates[ci]);
+  }
+
+  var tenders = [];
+  for (var di = 0; di < deduplicated.length; di++) {
+    tenders.push({
+      listingPosition: di + 1,
+      originalListingTitle: deduplicated[di].title,
+      detailUrl: deduplicated[di].canonicalUrl
+    });
+  }
+  return tenders;
+}
+
+testObject('Dedup: two identical URLs keep first visible',
+  deduplicateCandidates([
+    { canonicalUrl: 'https://www.jobz.pk/a_tenders-1.html', title: 'Tender A', isVisible: true },
+    { canonicalUrl: 'https://www.jobz.pk/a_tenders-1.html', title: 'Tender A', isVisible: true }
+  ]),
+  [
+    { listingPosition: 1, originalListingTitle: 'Tender A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' }
+  ]);
+
+testObject('Dedup: duplicate hidden then visible replaces with visible',
+  deduplicateCandidates([
+    { canonicalUrl: 'https://www.jobz.pk/a_tenders-1.html', title: 'Tender A', isVisible: false },
+    { canonicalUrl: 'https://www.jobz.pk/a_tenders-1.html', title: 'Tender A (visible copy)', isVisible: true }
+  ]),
+  [
+    { listingPosition: 1, originalListingTitle: 'Tender A (visible copy)', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' }
+  ]);
+
+testObject('Dedup: duplicate visible then hidden keeps first visible',
+  deduplicateCandidates([
+    { canonicalUrl: 'https://www.jobz.pk/a_tenders-1.html', title: 'Tender A', isVisible: true },
+    { canonicalUrl: 'https://www.jobz.pk/a_tenders-1.html', title: 'Tender A hidden', isVisible: false }
+  ]),
+  [
+    { listingPosition: 1, originalListingTitle: 'Tender A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' }
+  ]);
+
+testObject('Dedup: three different URLs all kept',
+  deduplicateCandidates([
+    { canonicalUrl: 'https://www.jobz.pk/a_tenders-1.html', title: 'Tender A', isVisible: true },
+    { canonicalUrl: 'https://www.jobz.pk/b_tenders-2.html', title: 'Tender B', isVisible: true },
+    { canonicalUrl: 'https://www.jobz.pk/c_tenders-3.html', title: 'Tender C', isVisible: true }
+  ]),
+  [
+    { listingPosition: 1, originalListingTitle: 'Tender A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' },
+    { listingPosition: 2, originalListingTitle: 'Tender B', detailUrl: 'https://www.jobz.pk/b_tenders-2.html' },
+    { listingPosition: 3, originalListingTitle: 'Tender C', detailUrl: 'https://www.jobz.pk/c_tenders-3.html' }
+  ]);
+
+testObject('Dedup: mixed duplicates correct ordering',
+  deduplicateCandidates([
+    { canonicalUrl: 'https://www.jobz.pk/a_tenders-1.html', title: 'A', isVisible: true },
+    { canonicalUrl: 'https://www.jobz.pk/b_tenders-2.html', title: 'B', isVisible: false },
+    { canonicalUrl: 'https://www.jobz.pk/b_tenders-2.html', title: 'B visible', isVisible: true },
+    { canonicalUrl: 'https://www.jobz.pk/a_tenders-1.html', title: 'A again', isVisible: true }
+  ]),
+  [
+    { listingPosition: 1, originalListingTitle: 'A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' },
+    { listingPosition: 2, originalListingTitle: 'B visible', detailUrl: 'https://www.jobz.pk/b_tenders-2.html' }
+  ]);
+
+// ===== 10. Phase 3C: Button enablement decision =====
+
+output.textContent += '\n--- Phase 3C: Button Enablement Decision ---\n';
+
+var FATAL_WARNING_PATTERNS = ['could not be found', 'no valid tender listings'];
+
+function normalizeTenderArray(tenders) {
+  if (!Array.isArray(tenders)) return [];
+  var valid = [];
+  for (var i = 0; i < tenders.length; i++) {
+    var t = tenders[i];
+    if (t && typeof t === 'object' && typeof t.detailUrl === 'string' && typeof t.originalListingTitle === 'string') {
+      valid.push(t);
+    }
+  }
+  return valid;
+}
+
+function shouldEnableButton(response) {
+  if (!response || typeof response.supported !== 'boolean') return false;
+  if (!response.supported) return false;
+
+  var validTenders = normalizeTenderArray(response.tenders);
+  var count = validTenders.length;
+
+  if (count === 0) return false;
+
+  var isStale = response.reason && response.reason.indexOf('page changed') !== -1;
+  if (isStale) return false;
+
+  if (response.reason) return false;
+
+  var warnings = Array.isArray(response.warnings) ? response.warnings : [];
+  for (var wi = 0; wi < warnings.length; wi++) {
+    var w = warnings[wi];
+    for (var fpi = 0; fpi < FATAL_WARNING_PATTERNS.length; fpi++) {
+      if (w.indexOf(FATAL_WARNING_PATTERNS[fpi]) !== -1) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+test('Enable: valid nonempty extraction enables button',
+  shouldEnableButton({
+    supported: true,
+    pageNumber: 1,
+    tenders: [{ originalListingTitle: 'Tender A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' }],
+    tenderCount: 1,
+    warnings: [],
+    reason: null
+  }), true);
+
+test('Enable: empty extraction disables button',
+  shouldEnableButton({
+    supported: true,
+    pageNumber: 1,
+    tenders: [],
+    tenderCount: 0,
+    warnings: [],
+    reason: null
+  }), false);
+
+test('Enable: undefined tenders disables button',
+  shouldEnableButton({
+    supported: true,
+    pageNumber: 1,
+    tenderCount: 0,
+    warnings: [],
+    reason: null
+  }), false);
+
+test('Enable: unsupported page disables button',
+  shouldEnableButton({
+    supported: false,
+    pageNumber: null,
+    tenders: [{ originalListingTitle: 'Tender A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' }],
+    tenderCount: 1,
+    warnings: [],
+    reason: 'Please open a Jobz.pk tender listing page.'
+  }), false);
+
+test('Enable: section-not-found warning disables button',
+  shouldEnableButton({
+    supported: true,
+    pageNumber: 1,
+    tenders: [],
+    tenderCount: 0,
+    warnings: ['The tender listing section could not be found. The webpage structure may have changed.'],
+    reason: null
+  }), false);
+
+test('Enable: no-valid-tenders warning disables button',
+  shouldEnableButton({
+    supported: true,
+    pageNumber: 1,
+    tenders: [],
+    tenderCount: 0,
+    warnings: ['The tender section was found, but no valid tender listings were detected.'],
+    reason: null
+  }), false);
+
+test('Enable: stale-page result disables button',
+  shouldEnableButton({
+    supported: true,
+    pageNumber: null,
+    tenders: [{ originalListingTitle: 'Tender A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' }],
+    tenderCount: 1,
+    warnings: [],
+    reason: 'The page changed while it was being inspected. Open the popup again.'
+  }), false);
+
+test('Enable: inspection-failure result disables button',
+  shouldEnableButton({
+    supported: true,
+    pageNumber: null,
+    tenders: [],
+    tenderCount: 0,
+    warnings: [],
+    reason: 'The page could not be inspected. Reload the page and try again.'
+  }), false);
+
+test('Enable: malformed response (null) disables button',
+  shouldEnableButton(null), false);
+
+test('Enable: malformed response (string) disables button',
+  shouldEnableButton('not an object'), false);
+
+test('Enable: nonfatal warning with valid tenders permits enablement',
+  shouldEnableButton({
+    supported: true,
+    pageNumber: 1,
+    tenders: [{ originalListingTitle: 'Tender A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' }],
+    tenderCount: 1,
+    warnings: ['Optional city missing for tender 3'],
+    reason: null
+  }), true);
+
+test('Enable: count equals array length after normalization',
+  (function() {
+    var tenders = [
+      { originalListingTitle: 'A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' },
+      { originalListingTitle: 'B', detailUrl: 'https://www.jobz.pk/b_tenders-2.html' },
+      { originalListingTitle: 'C', detailUrl: 'https://www.jobz.pk/c_tenders-3.html' }
+    ];
+    var normalized = normalizeTenderArray(tenders);
+    return normalized.length === 3 && normalized.length === tenders.length;
+  })(), true);
+
+test('Enable: invalid records stripped from count',
+  (function() {
+    var response = {
+      supported: true,
+      pageNumber: 1,
+      tenders: [
+        { originalListingTitle: 'A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' },
+        { originalListingTitle: 'B' },
+        { originalListingTitle: 'C', detailUrl: 'https://www.jobz.pk/c_tenders-3.html' }
+      ],
+      tenderCount: 3,
+      warnings: [],
+      reason: null
+    };
+    var valid = normalizeTenderArray(response.tenders);
+    return valid.length === 2;
+  })(), true);
+
+test('Enable: previous count does not carry over with empty tenders',
+  (function() {
+    var response1 = {
+      supported: true, pageNumber: 1,
+      tenders: [{ originalListingTitle: 'A', detailUrl: 'https://www.jobz.pk/a_tenders-1.html' }],
+      tenderCount: 1, warnings: [], reason: null
+    };
+    var response2 = {
+      supported: true, pageNumber: 2,
+      tenders: [],
+      tenderCount: 0, warnings: [], reason: null
+    };
+    var enable1 = shouldEnableButton(response1);
+    var enable2 = shouldEnableButton(response2);
+    return enable1 === true && enable2 === false;
+  })(), true);
+
+// ===== Summary =====
+
+var total = passed + failed;
+var summary = document.getElementById('summary');
+summary.textContent = 'Tests: ' + total + ' total, ' + passed + ' passed, ' + failed + ' failed.';
+summary.className = 'summary ' + (failed === 0 ? 'pass' : 'fail');
+</script>
+</body>
+</html>

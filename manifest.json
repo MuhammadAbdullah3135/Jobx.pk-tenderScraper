@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Jobz.pk Tender Batch Downloader",
+  "version": "0.1.0",
+  "minimum_chrome_version": "109",
+  "description": "A Chromium extension for organizing downloads of tender text and advertisement images from the currently opened Jobz.pk tender page.",
+  "action": {
+    "default_popup": "src/popup/popup.html"
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://www.jobz.pk/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.jobz.pk/*"],
+      "js": ["src/content/fetch-content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
