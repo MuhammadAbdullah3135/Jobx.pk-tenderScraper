@@ -594,6 +594,31 @@ function extractJobDetailAsText(doc) {
   return parts.join('\r\n');
 }
 
+function extractJobDetailMetadata(doc) {
+  var result = {};
+  var jobDetailEl = doc.querySelector('.job_detail');
+  if (!jobDetailEl) return result;
+  var rows = jobDetailEl.querySelectorAll('.row_job_detail');
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var keyEl = row.querySelector('.job_detail_cell1');
+    var valueEl = row.querySelector('.job_detail_cell2');
+    if (!keyEl || !valueEl) continue;
+    var rawLabel = keyEl.textContent || '';
+    var rawValue = valueEl.textContent || '';
+    var label = normalizeLabel(rawLabel);
+    var value = normalizeCellText(rawValue);
+    if (!label || !value) continue;
+    for (var key in METADATA_LABEL_ALIASES) {
+      if (result[key]) continue;
+      if (matchLabel(label, METADATA_LABEL_ALIASES[key])) {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
 // ---- Main Entry Point ----
 
 function parseTenderDetail(html, sourceUrl, expectedTenderId, originalListingTitle) {
@@ -650,6 +675,13 @@ function parseTenderDetail(html, sourceUrl, expectedTenderId, originalListingTit
   }
 
   var metadata = extractAllMetadata(doc, mainContent);
+
+  var jobDetailMeta = extractJobDetailMetadata(doc);
+  for (var jKey in jobDetailMeta) {
+    if (!metadata[jKey] || metadata[jKey] === 'Not available') {
+      metadata[jKey] = jobDetailMeta[jKey];
+    }
+  }
 
   var defaultMetadata = {
     datePosted: 'Not available',

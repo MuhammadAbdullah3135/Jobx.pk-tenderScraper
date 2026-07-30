@@ -158,6 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
             var canEnable = cachedTenders.length > 0 && !batchActive;
             btn.disabled = !canEnable;
             if (messageArea) messageArea.textContent = 'Batch cleared. Ready for new batch.';
+            checkPageAlreadyDownloaded();
           });
         };
       }
@@ -290,6 +291,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
     cachedTenders = validTenders;
     cachedPageUrl = response.pageUrl || null;
+    checkPageAlreadyDownloaded();
+  }
+
+  function checkPageAlreadyDownloaded() {
+    if (batchUIControlled) return;
+
+    var validCount = 0;
+    for (var i = 0; i < cachedTenders.length; i++) {
+      var t = cachedTenders[i];
+      if (t && t.tenderId && typeof t.tenderId === 'string') {
+        validCount++;
+      }
+    }
+
+    if (validCount === 0) return;
+
+    getProcessedTenderIds().then(function(ids) {
+      var allProcessed = true;
+      for (var i = 0; i < cachedTenders.length; i++) {
+        var t = cachedTenders[i];
+        if (t && t.tenderId && typeof t.tenderId === 'string') {
+          if (ids.indexOf(t.tenderId) === -1) {
+            allProcessed = false;
+            break;
+          }
+        }
+      }
+      if (allProcessed) {
+        btn.disabled = true;
+        if (messageArea) messageArea.textContent = 'This page has already been downloaded.';
+      }
+    });
   }
 
   function normalizeTenderArray(tenders) {

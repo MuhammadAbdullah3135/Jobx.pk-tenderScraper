@@ -350,7 +350,7 @@ describe('Phase 6E — Batch reset', function() {
       });
   });
 
-  it('clears processed tender IDs', function() {
+  it('preserves processed tender IDs across resetBatch', function() {
     return addProcessedTenderId('T1')
       .then(function() {
         return addProcessedTenderId('T2');
@@ -368,7 +368,9 @@ describe('Phase 6E — Batch reset', function() {
         return getProcessedTenderIds();
       })
       .then(function(ids) {
-        assert.equal(ids.length, 0);
+        assert.equal(ids.length, 2, 'processedTenderIds must persist across resetBatch');
+        assert.ok(ids.indexOf('T1') !== -1);
+        assert.ok(ids.indexOf('T2') !== -1);
       });
   });
 
@@ -448,7 +450,7 @@ describe('Phase 6E — State cleanup', function() {
       });
   });
 
-  it('reset clears both batch state and processed IDs', function() {
+  it('reset clears batch state but preserves processed IDs', function() {
     var tenders = [createMockTender(1), createMockTender(2)];
     var state = createBatchState(1, 'https://www.jobz.pk/tenders-1', tenders);
     return saveBatchState(state)
@@ -476,7 +478,39 @@ describe('Phase 6E — State cleanup', function() {
         return getProcessedTenderIds();
       })
       .then(function(clearedIds) {
-        assert.equal(clearedIds.length, 0);
+        assert.equal(clearedIds.length, 2, 'processed IDs must survive resetBatch');
+      });
+  });
+
+  it('skips previously processed tenders across batch resets', function() {
+    var tenders = [createMockTender(1), createMockTender(2)];
+    var state = createBatchState(1, 'https://www.jobz.pk/tenders-1', tenders);
+    return saveBatchState(state)
+      .then(function() {
+        return processBatch(createMockSuccessFn(1));
+      })
+      .then(function(finalState) {
+        assert.equal(finalState.processedCount, 2);
+        assert.equal(finalState.successCount, 2);
+        assert.equal(finalState.skippedCount, 0);
+      })
+      .then(function() {
+        // Simulate "Start New Batch": clear batch state but NOT processed IDs
+        return resetBatch();
+      })
+      .then(function() {
+        // Create new batch with the same tenders
+        var tenders2 = [createMockTender(1), createMockTender(2)];
+        var state2 = createBatchState(1, 'https://www.jobz.pk/tenders-1', tenders2);
+        return saveBatchState(state2);
+      })
+      .then(function() {
+        return processBatch(createMockSuccessFn(2));
+      })
+      .then(function(finalState) {
+        assert.equal(finalState.skippedCount, 2, 'both tenders must be skipped via persisted processedTenderIds');
+        assert.equal(finalState.successCount, 0);
+        assert.equal(finalState.processedCount, 2);
       });
   });
 });

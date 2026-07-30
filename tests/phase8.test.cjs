@@ -403,7 +403,7 @@ describe('Phase 8 — Full pipeline integration', function() {
       });
   });
 
-  it('Reset clears batch state and processed IDs', function() {
+  it('Reset clears batch state but preserves processed IDs', function() {
     var tenders = [createMockTender(1)];
     var state = createBatchState(1, 'https://www.jobz.pk/tenders-1', tenders);
     return saveBatchState(state)
@@ -425,7 +425,7 @@ describe('Phase 8 — Full pipeline integration', function() {
         return getProcessedTenderIds();
       })
       .then(function(ids) {
-        assert.equal(ids.length, 0);
+        assert.equal(ids.length, 2, 'processed IDs must survive resetBatch');
         assert.equal(isBatchProcessing(), false);
       });
   });

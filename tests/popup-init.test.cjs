@@ -409,3 +409,121 @@ describe('Popup initialization — unsupported guarded by batchUIControlled', ()
     assert.strictEqual(els['download-btn'].textContent, 'Start New Batch');
   });
 });
+
+function simulatePageDuplicateCheck(els, cachedTenders, processedIds, batchUIControlled) {
+  if (batchUIControlled) return false;
+
+  var validCount = 0;
+  for (var i = 0; i < cachedTenders.length; i++) {
+    var t = cachedTenders[i];
+    if (t && t.tenderId && typeof t.tenderId === 'string') {
+      validCount++;
+    }
+  }
+
+  if (validCount === 0) return false;
+
+  var allProcessed = true;
+  for (var i = 0; i < cachedTenders.length; i++) {
+    var t = cachedTenders[i];
+    if (t && t.tenderId && typeof t.tenderId === 'string') {
+      if (processedIds.indexOf(t.tenderId) === -1) {
+        allProcessed = false;
+        break;
+      }
+    }
+  }
+
+  if (allProcessed) {
+    els['download-btn'].disabled = true;
+    els['message-area'].textContent = 'This page has already been downloaded.';
+    return true;
+  }
+  return false;
+}
+
+// ---- Page-level duplicate prevention tests ----
+
+describe('Page-level duplicate prevention', () => {
+  beforeEach(function() { mockData = {}; });
+
+  it('disables button when all tenders have tenderId and all are processed', () => {
+    var els = createMockPopupDOM();
+    var response = makeInspectionResponse();
+    simulateRenderSupported(response, els, false, false);
+
+    var tenderIds = response.tenders.map(function(t) { return t.tenderId; });
+    var result = simulatePageDuplicateCheck(els, response.tenders, tenderIds, false);
+
+    assert.strictEqual(result, true);
+    assert.strictEqual(els['download-btn'].disabled, true);
+    assert.strictEqual(els['message-area'].textContent, 'This page has already been downloaded.');
+  });
+
+  it('leaves button enabled when only some tenders are processed', () => {
+    var els = createMockPopupDOM();
+    var response = makeInspectionResponse();
+    simulateRenderSupported(response, els, false, false);
+
+    var partialIds = [response.tenders[0].tenderId];
+    var result = simulatePageDuplicateCheck(els, response.tenders, partialIds, false);
+
+    assert.strictEqual(result, false);
+    assert.strictEqual(els['download-btn'].disabled, false);
+  });
+
+  it('skips check for tenders without tenderId', () => {
+    var els = createMockPopupDOM();
+    var tendersWithoutId = [
+      { detailUrl: 'https://www.jobz.pk/tender-1.html', originalListingTitle: 'Tender 1' },
+      { detailUrl: 'https://www.jobz.pk/tender-2.html', originalListingTitle: 'Tender 2' }
+    ];
+    var response = makeInspectionResponse({ tenders: tendersWithoutId, tenderCount: 2 });
+    simulateRenderSupported(response, els, false, false);
+
+    var result = simulatePageDuplicateCheck(els, response.tenders, [], false);
+
+    assert.strictEqual(result, false);
+    assert.strictEqual(els['download-btn'].disabled, false);
+  });
+
+  it('does nothing when batchUIControlled is true', () => {
+    var els = createMockPopupDOM();
+    var response = makeInspectionResponse();
+    simulateRenderSupported(response, els, false, false);
+
+    var tenderIds = response.tenders.map(function(t) { return t.tenderId; });
+    els['download-btn'].disabled = false;
+    var result = simulatePageDuplicateCheck(els, response.tenders, tenderIds, true);
+
+    assert.strictEqual(result, false);
+    assert.strictEqual(els['download-btn'].disabled, false);
+  });
+
+  it('re-enables button when navigating to a new page after old page was blocked', () => {
+    var els = createMockPopupDOM();
+
+    // Page A — all processed
+    var pageAResponse = makeInspectionResponse();
+    simulateRenderSupported(pageAResponse, els, false, false);
+    var pageAIds = pageAResponse.tenders.map(function(t) { return t.tenderId; });
+    simulatePageDuplicateCheck(els, pageAResponse.tenders, pageAIds, false);
+    assert.strictEqual(els['download-btn'].disabled, true);
+
+    // Navigate to Page B — new tenders (none processed), button re-enabled
+    var pageBTenders = [
+      { listingPosition: 1, tenderId: 'N1', detailUrl: 'https://www.jobz.pk/new-tenders-2001.html', originalListingTitle: 'New Tender 1', title: 'New Tender 1', city: 'LAHORE' },
+      { listingPosition: 2, tenderId: 'N2', detailUrl: 'https://www.jobz.pk/new-tenders-2002.html', originalListingTitle: 'New Tender 2', title: 'New Tender 2', city: 'KARACHI' }
+    ];
+    var pageBResponse = makeInspectionResponse({
+      tenders: pageBTenders,
+      tenderCount: 2,
+      pageUrl: 'https://www.jobz.pk/new-tenders/'
+    });
+    simulateRenderSupported(pageBResponse, els, false, false);
+    var pageBResult = simulatePageDuplicateCheck(els, pageBTenders, pageAIds, false);
+
+    assert.strictEqual(pageBResult, false);
+    assert.strictEqual(els['download-btn'].disabled, false);
+  });
+});

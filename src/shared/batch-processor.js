@@ -189,8 +189,7 @@ function _delay(ms) {
 function _downloadTenderFile(record, state) {
   try {
     var txtContent = generateTenderTxt(record);
-    var blob = new Blob([txtContent], { type: 'text/plain' });
-    var url = URL.createObjectURL(blob);
+    var url = 'data:text/plain;charset=utf-8,' + encodeURIComponent(txtContent);
     var pageNum = state.pageNumber && Number.isFinite(state.pageNumber) && state.pageNumber > 0 ? state.pageNumber : 1;
     var createdAt = state.createdAt ? new Date(state.createdAt) : new Date();
     var batchFolder = createBatchFolderPath(pageNum, createdAt);
@@ -204,7 +203,6 @@ function _downloadTenderFile(record, state) {
           conflictAction: 'overwrite'
         }, function(downloadId) {
           try {
-            if (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
             if (chrome.runtime.lastError) {
               record.downloadStatus = DOWNLOAD_STATUS_DOWNLOAD_FAILED;
               record.failureReason = chrome.runtime.lastError.message || 'Download failed';
@@ -239,16 +237,13 @@ function _downloadTenderFile(record, state) {
 function _downloadDetailsFile(record, batchFolder) {
   if (!record.detailsText) return;
   try {
-    var blob = new Blob([record.detailsText], { type: 'text/plain' });
-    var url = URL.createObjectURL(blob);
+    var url = 'data:text/plain;charset=utf-8,' + encodeURIComponent(record.detailsText);
     var fileName = batchFolder + '/' + record.folderName + '/details.txt';
     chrome.downloads.download({
       url: url,
       filename: fileName,
       conflictAction: 'overwrite'
-    }, function() {
-      if (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
-    });
+    }, function() {});
   } catch (e) {
     // details.txt is supplemental; do not affect record state
   }
@@ -378,7 +373,5 @@ function _downloadImageFiles(record, state) {
 
 function resetBatch() {
   _batchProcessingInProgress = false;
-  return clearBatchState().then(function() {
-    return clearProcessedTenderIds();
-  });
+  return clearBatchState();
 }
