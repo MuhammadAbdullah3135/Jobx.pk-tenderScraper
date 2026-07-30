@@ -114,10 +114,12 @@ function createMockPopupDOM() {
     'summary-total': createMockElement('span'),
     'summary-success': createMockElement('span'),
     'summary-failed': createMockElement('span'),
-    'summary-skipped': createMockElement('span')
+    'summary-skipped': createMockElement('span'),
+    'clear-history-btn': createMockElement('button')
   };
   els['progress-area'].style.display = 'none';
   els['completion-summary'].style.display = 'none';
+  els['clear-history-btn'].style.display = 'none';
   return els;
 }
 
@@ -411,6 +413,7 @@ describe('Popup initialization — unsupported guarded by batchUIControlled', ()
 });
 
 function simulatePageDuplicateCheck(els, cachedTenders, processedIds, batchUIControlled) {
+  els['clear-history-btn'].style.display = 'none';
   if (batchUIControlled) return false;
 
   var validCount = 0;
@@ -435,8 +438,10 @@ function simulatePageDuplicateCheck(els, cachedTenders, processedIds, batchUICon
   }
 
   if (allProcessed) {
+    var label = validCount === 1 ? 'tender' : 'tenders';
     els['download-btn'].disabled = true;
-    els['message-area'].textContent = 'This page has already been downloaded.';
+    els['message-area'].textContent = 'All ' + validCount + ' ' + label + ' on this page have already been downloaded.';
+    els['clear-history-btn'].style.display = '';
     return true;
   }
   return false;
@@ -457,7 +462,7 @@ describe('Page-level duplicate prevention', () => {
 
     assert.strictEqual(result, true);
     assert.strictEqual(els['download-btn'].disabled, true);
-    assert.strictEqual(els['message-area'].textContent, 'This page has already been downloaded.');
+    assert.strictEqual(els['message-area'].textContent, 'All 3 tenders on this page have already been downloaded.');
   });
 
   it('leaves button enabled when only some tenders are processed', () => {
@@ -525,5 +530,68 @@ describe('Page-level duplicate prevention', () => {
 
     assert.strictEqual(pageBResult, false);
     assert.strictEqual(els['download-btn'].disabled, false);
+  });
+});
+
+function simulateClearHistory(els) {
+  delete mockData[DUPLICATE_STORAGE_KEY];
+  els['download-btn'].disabled = false;
+  els['clear-history-btn'].style.display = 'none';
+  els['message-area'].textContent = 'Download history cleared.';
+}
+
+describe('Clear download history', () => {
+  beforeEach(function() { mockData = {}; });
+
+  it('disables button and shows clear history when all tenders are processed', () => {
+    var els = createMockPopupDOM();
+    var response = makeInspectionResponse();
+    simulateRenderSupported(response, els, false, false);
+
+    var allIds = response.tenders.map(function(t) { return t.tenderId; });
+    simulatePageDuplicateCheck(els, response.tenders, allIds, false);
+
+    assert.strictEqual(els['download-btn'].disabled, true);
+    assert.strictEqual(els['clear-history-btn'].style.display, '');
+    assert.ok(els['message-area'].textContent.indexOf('All 3 tenders on this page') === 0);
+  });
+
+  it('clicking clear history re-enables button and hides clear history button', () => {
+    var els = createMockPopupDOM();
+    var response = makeInspectionResponse();
+    simulateRenderSupported(response, els, false, false);
+
+    var allIds = response.tenders.map(function(t) { return t.tenderId; });
+    simulatePageDuplicateCheck(els, response.tenders, allIds, false);
+    assert.strictEqual(els['download-btn'].disabled, true);
+    assert.strictEqual(els['clear-history-btn'].style.display, '');
+
+    simulateClearHistory(els);
+    assert.strictEqual(els['download-btn'].disabled, false);
+    assert.strictEqual(els['clear-history-btn'].style.display, 'none');
+    assert.strictEqual(els['message-area'].textContent, 'Download history cleared.');
+
+    // Verify re-check keeps it enabled
+    var stillEnabled = simulatePageDuplicateCheck(els, response.tenders, [], false);
+    assert.strictEqual(stillEnabled, false);
+    assert.strictEqual(els['download-btn'].disabled, false);
+    assert.strictEqual(els['clear-history-btn'].style.display, 'none');
+  });
+
+  it('new page with unprocessed tenders does not show clear history', () => {
+    var els = createMockPopupDOM();
+    var response = makeInspectionResponse();
+    simulateRenderSupported(response, els, false, false);
+
+    var partialIds = [response.tenders[0].tenderId];
+    simulatePageDuplicateCheck(els, response.tenders, partialIds, false);
+
+    assert.strictEqual(els['clear-history-btn'].style.display, 'none');
+    assert.strictEqual(els['download-btn'].disabled, false);
+  });
+
+  it('clear history button hidden by default on fresh popup', () => {
+    var els = createMockPopupDOM();
+    assert.strictEqual(els['clear-history-btn'].style.display, 'none');
   });
 });

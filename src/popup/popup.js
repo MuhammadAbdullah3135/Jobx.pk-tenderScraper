@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   var skippedCountEl = document.getElementById('skipped-count');
   var remainingCountEl = document.getElementById('remaining-count');
   var currentTenderName = document.getElementById('current-tender-name');
+  var clearHistoryBtn = document.getElementById('clear-history-btn');
 
   var cachedTenders = [];
   var cachedPageUrl = null;
@@ -199,8 +200,12 @@ document.addEventListener('DOMContentLoaded', () => {
     currentPageStatus.textContent = 'Unsupported';
     paginationInfo.textContent = 'Not available';
     tenderCountEl.textContent = '0';
-    if (messageArea) messageArea.textContent = reason || 'Please open a Jobz.pk tender listing page.';
+    if (messageArea) {
+      messageArea.textContent = reason || 'Please open a Jobz.pk tender listing page.';
+      messageArea.classList.remove('message-warning');
+    }
     btn.disabled = true;
+    if (clearHistoryBtn) clearHistoryBtn.style.display = 'none';
   }
 
   function renderUninspectable(reason) {
@@ -208,8 +213,12 @@ document.addEventListener('DOMContentLoaded', () => {
     currentPageStatus.textContent = 'Cannot inspect';
     paginationInfo.textContent = 'Not available';
     tenderCountEl.textContent = '0';
-    if (messageArea) messageArea.textContent = reason || 'The current browser tab cannot be inspected.';
+    if (messageArea) {
+      messageArea.textContent = reason || 'The current browser tab cannot be inspected.';
+      messageArea.classList.remove('message-warning');
+    }
     btn.disabled = true;
+    if (clearHistoryBtn) clearHistoryBtn.style.display = 'none';
   }
 
   function renderSupported(response) {
@@ -295,6 +304,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function checkPageAlreadyDownloaded() {
+    if (clearHistoryBtn) clearHistoryBtn.style.display = 'none';
+    if (messageArea) messageArea.classList.remove('message-warning');
     if (batchUIControlled) return;
 
     var validCount = 0;
@@ -320,8 +331,27 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (allProcessed) {
         btn.disabled = true;
-        if (messageArea) messageArea.textContent = 'This page has already been downloaded.';
+        var label = validCount === 1 ? 'tender' : 'tenders';
+        if (messageArea) {
+          messageArea.textContent = 'All ' + validCount + ' ' + label + ' on this page have already been downloaded.';
+          messageArea.classList.add('message-warning');
+        }
+        if (clearHistoryBtn) {
+          clearHistoryBtn.onclick = handleClearHistory;
+          clearHistoryBtn.style.display = '';
+        }
       }
+    });
+  }
+
+  function handleClearHistory() {
+    clearProcessedTenderIds().then(function() {
+      if (messageArea) {
+        messageArea.textContent = 'Download history cleared.';
+        messageArea.classList.remove('message-warning');
+      }
+      if (clearHistoryBtn) clearHistoryBtn.style.display = 'none';
+      checkPageAlreadyDownloaded();
     });
   }
 
